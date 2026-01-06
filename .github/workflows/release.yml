@@ -129,3 +129,5 @@ EOF
         run: |
           echo "✅ Release ${{ steps.release-version.outputs.version }} created successfully!"
           echo "🔗 View release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.release-version.outputs.version }}"
+
+# trigger ci
