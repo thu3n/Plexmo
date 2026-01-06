@@ -1,12 +1,24 @@
 import { NextResponse } from "next/server";
 import { getAllHistory } from "@/lib/history";
+import { cookies } from "next/headers";
+import { verifyToken } from "@/lib/jwt";
 import { validateApiKey } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-    if (!validateApiKey(request)) {
-        return NextResponse.json({ error: "Unauthorized: Invalid or missing API Key" }, { status: 401 });
+    // Auth Priority: 1. Session, 2. API Key (for 3rd party tools like Wrapperr)
+
+    // 1. Check Session
+    const token = cookies().get("token")?.value;
+    const sessionUser = token ? await verifyToken(token) : null;
+
+    // 2. Check API Key
+    const isApiKeyValid = validateApiKey(request);
+
+    // Require at least one valid auth method
+    if (!sessionUser && !isApiKeyValid) {
+        return NextResponse.json({ error: "Unauthorized: Invalid Session or API Key" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);

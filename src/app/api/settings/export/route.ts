@@ -4,7 +4,17 @@ import path from "path";
 
 export const dynamic = "force-dynamic";
 
+import { cookies } from "next/headers";
+import { verifyToken } from "@/lib/jwt";
+
 export async function GET() {
+    const token = cookies().get("token")?.value;
+    const user = token ? await verifyToken(token) : null;
+
+    if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
         // Determine database path (same logic as in db.ts)
         let dbPath: string;

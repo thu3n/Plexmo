@@ -6,14 +6,17 @@ export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Define public paths that don't require authentication
+    // Note: Some API paths here (statistics, history) are "public" to the middleware (to allow API Keys)
+    // but are strictly secured inside their route handlers.
     const publicPaths = [
         "/login",
         "/api/auth/plex",
         "/api/auth/logout",
         "/setup",
-        "/api/auth/maintenance",
         "/api/setup/status",
-        "/api/history/export",
+        "/api/history",     // Hybrid Auth (Session or API Key)
+        "/api/statistics",  // Hybrid Auth
+        "/api/stats",       // Hybrid Auth
     ];
 
     // Check if the current path is public
@@ -87,28 +90,8 @@ export async function middleware(request: NextRequest) {
 
         // If user is NOT logged in and tries to access a protected route
         if (!user && !isPublicPath) {
-            // CHECK MAINTENANCE MODE
-            // Note: This fetch might still happen often for unauthenticated users. 
-            // Could consider caching this too, but less critical than setup check which hits everyone.
-            let accessAllowed = false;
-            try {
-                const maintenanceRes = await fetch(`${localApiUrl}/api/auth/maintenance`);
-                if (maintenanceRes.ok) {
-                    const { active } = await maintenanceRes.json();
-                    if (active) {
-                        accessAllowed = true;
-                    }
-                }
-            } catch (e) {
-                // console.error("Middleware Maintenance Check Failed", e);
-            }
-
-            if (accessAllowed) {
-                response = NextResponse.next();
-            } else {
-                const loginUrl = new URL("/login", request.url);
-                response = NextResponse.redirect(loginUrl);
-            }
+            const loginUrl = new URL("/login", request.url);
+            response = NextResponse.redirect(loginUrl);
         }
         // If user IS logged in and tries to access Login page -> Redirect to Dashboard
         else if (user && pathname === "/login") {

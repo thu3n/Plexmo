@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
 // import { calculateStreaks } from "@/lib/user_stats";
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+    const user = await authorizeApiKeyOrSession(request);
+    if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
         const searchParams = request.nextUrl.searchParams;
         const range = searchParams.get("range") || "24h";

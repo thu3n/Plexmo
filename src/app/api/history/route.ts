@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { getHistory, deleteHistory, deleteAllHistory } from "@/lib/history";
+import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+    const user = await authorizeApiKeyOrSession(request);
+    if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const serverId = searchParams.get("serverId") || undefined;
     const userId = searchParams.get("userId") || undefined;

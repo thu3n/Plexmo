@@ -1,15 +1,54 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { cookies } from "next/headers";
+import { verifyToken } from "@/lib/jwt";
 
 export async function GET(request: Request) {
+  // 1. Strict Authentication
+  const token = cookies().get("token")?.value;
+  const user = token ? await verifyToken(token) : null;
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
-  const currentPath = searchParams.get("path") || process.env.TAUTULLI_PATH || process.cwd();
+  
+  // 2. Determine Secure Root (Import Directory)
+  let configDir: string;
+  if (process.env.CONFIG_DIR) {
+    configDir = process.env.CONFIG_DIR;
+  } else if (process.env.NODE_ENV === "production" && fs.existsSync(path.join(process.cwd(), "config"))) {
+    configDir = path.join(process.cwd(), "config");
+  } else if (fs.existsSync("/app/config")) {
+    configDir = "/app/config";
+  } else {
+    // Default fallback (dev)
+    configDir = path.join(process.cwd(), "prisma"); // or local config
+  }
+
+  // We only allow access to "import" folder inside config
+  const allowedRoot = path.join(configDir, "import");
+
+  // Ensure import dir exists
+  if (!fs.existsSync(allowedRoot)) {
+    try {
+      fs.mkdirSync(allowedRoot, { recursive: true });
+    } catch(e) {
+      // ignore
+    }
+  }
+
+  const reqPath = searchParams.get("path") || allowedRoot;
+  const currentPath = path.resolve(reqPath);
+
+  // 3. Path Traversal Protection
+  if (!currentPath.startsWith(path.resolve(allowedRoot))) {
+     return NextResponse.json({ error: "Access denied: Path outside allowed directory" }, { status: 403 });
+  }
 
   try {
-    // Basic security: Prevent escaping root if desired, but for this admin tool allowing full access is usually expected.
-    // For now, we allow full system access since it's an admin setting.
-
     // Check if path exists
     if (!fs.existsSync(currentPath)) {
       return NextResponse.json({ error: "Path not found" }, { status: 404 });
@@ -43,8 +82,9 @@ export async function GET(request: Request) {
     const parent = path.dirname(currentPath);
 
     return NextResponse.json({
-      currentPath: path.resolve(currentPath),
-      parent: parent === currentPath ? null : parent, // Root check
+      currentPath: currentPath,
+      // Only allow navigating up if we are not at the allowed root
+      parent: currentPath === path.resolve(allowedRoot) ? null : parent,
       items,
     });
   } catch (error: any) {
