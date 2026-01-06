@@ -114,16 +114,14 @@ EOF
           fi
       
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ steps.release-version.outputs.version }}
+          tag: ${{ steps.release-version.outputs.version }}
           name: Release ${{ steps.release-version.outputs.version }}
-          body_path: release_notes.md
+          bodyFile: release_notes.md
+          token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
-          generate_release_notes: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Release Summary
         run: |
