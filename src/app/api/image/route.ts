@@ -49,13 +49,17 @@ export async function GET(request: NextRequest) {
             return new NextResponse(`Failed to fetch image: ${response.status}`, { status: response.status });
         }
 
-        const contentType = response.headers.get("Content-Type") || "image/jpeg";
+        const upstreamType = response.headers.get("Content-Type") || "image/jpeg";
+
+        // [SECURITY] Vulnerability Fix: Reflected XSS via Image Proxy
+        const safeType = upstreamType.startsWith("image/") ? upstreamType : "application/octet-stream";
         const buffer = await response.arrayBuffer();
 
         return new NextResponse(buffer, {
             headers: {
-                "Content-Type": contentType,
-                "Cache-Control": "public, max-age=3600"
+                "Content-Type": safeType,
+                "Cache-Control": "public, max-age=3600",
+                "X-Content-Type-Options": "nosniff" // Extra protection
             }
         });
 
