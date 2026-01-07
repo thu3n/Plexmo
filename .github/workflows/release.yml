@@ -49,51 +49,51 @@ jobs:
           # Check if this is v1.0.0 - if so, use custom intro
           if [ "$VERSION" == "v1.0.0" ]; then
             cat > release_notes.md << 'EOF'
-## 🎉 Plexmo 1.0 - Initial Release
-
-Welcome to **Plexmo** - a modern, beautiful monitoring and analytics dashboard for your Plex ecosystem!
-
-### ✨ Key Features
-
-**Multi-Server Support**
-- Native support for multiple Plex servers from a single interface
-- Unified library groups across servers for seamless content browsing
-
-**Real-Time Monitoring**
-- Live session monitoring with detailed playback information
-- Stream quality and bandwidth tracking
-- Transcoding status and CPU usage
-
-**Advanced Analytics**
-- Comprehensive watch history and user behavior tracking
-- Viewing streaks and content trends
-- Detailed statistics dashboards
-
-**Automation & Integration**
-- Discord notifications for stream activity
-- Scheduled content synchronization
-- Tautulli import for existing watch history
-- Automation rules for stream management
-
-**Security & Access**
-- Plex-based authentication
-- Multi-admin support
-- Granular user access control
-
-### 🚀 Getting Started
-
-Check out the [README](https://github.com/thu3n/plexmo#readme) for installation instructions using Docker or manual setup.
-
-### 💡 Built With
-
-- Next.js 16 · TypeScript · Tailwind CSS 4
-- Prisma · SQLite
-- ✨ Vibe Coded Philosophy
-
----
-
-**Note:** This project is developed independently and is not affiliated with Plex Inc.
-EOF
+          ## 🎉 Plexmo 1.0 - Initial Release
+          
+          Welcome to **Plexmo** - a modern, beautiful monitoring and analytics dashboard for your Plex ecosystem!
+          
+          ### ✨ Key Features
+          
+          **Multi-Server Support**
+          - Native support for multiple Plex servers from a single interface
+          - Unified library groups across servers for seamless content browsing
+          
+          **Real-Time Monitoring**
+          - Live session monitoring with detailed playback information
+          - Stream quality and bandwidth tracking
+          - Transcoding status and CPU usage
+          
+          **Advanced Analytics**
+          - Comprehensive watch history and user behavior tracking
+          - Viewing streaks and content trends
+          - Detailed statistics dashboards
+          
+          **Automation & Integration**
+          - Discord notifications for stream activity
+          - Scheduled content synchronization
+          - Tautulli import for existing watch history
+          - Automation rules for stream management
+          
+          **Security & Access**
+          - Plex-based authentication
+          - Multi-admin support
+          - Granular user access control
+          
+          ### 🚀 Getting Started
+          
+          Check out the [README](https://github.com/thu3n/plexmo#readme) for installation instructions using Docker or manual setup.
+          
+          ### 💡 Built With
+          
+          - Next.js 16 · TypeScript · Tailwind CSS 4
+          - Prisma · SQLite
+          - ✨ Vibe Coded Philosophy
+          
+          ---
+          
+          **Note:** This project is developed independently and is not affiliated with Plex Inc.
+          EOF
           else
             # For future releases, generate changelog from commits
             PREVIOUS_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
