@@ -141,6 +141,19 @@ export async function POST(request: Request) {
                 updateJob(job.id, { message: 'Calculating total items...', progress: 2 });
                 const serverCounts: Record<string, number> = {};
 
+                // PRE-FETCH USERS for Mapping
+                // We need to map Tautulli "User" (username) to Plexmo User ID.
+                const allUsers = plexmoDb.prepare("SELECT id, serverId, username, title FROM users").all() as any[];
+                // Map: `${serverId}:${username}` -> userId
+                const userMap = new Map<string, string>();
+                allUsers.forEach(u => {
+                    if (u.username) userMap.set(`${u.serverId}:${u.username}`, u.id);
+                    if (u.title) userMap.set(`${u.serverId}:${u.title}`, u.id); // Fallback to title
+                });
+                console.log(`[Import] Loaded ${allUsers.length} users for resolution.`);
+
+                const unknownUsers = new Set<string>();
+
                 for (const sourceId of sourceServerIds) {
                     const baseServerUrl = `${apiUrl}?apikey=${apiKey}&cmd=get_history&server_id=${sourceId}`;
                     try {
@@ -419,6 +432,54 @@ export async function POST(request: Request) {
                                             [parseInt(String(sourceId))]: String(targetId)
                                         };
                                         const mapped = mapTautulliToPlexmo(compatibleEntry, singleEntryMap);
+
+                                        // RESOLVE USER ID
+                                        let resolvedUserId = userMap.get(`${String(targetId)}:${row.user}`);
+
+                                        // GHOST USER HANDLING: If not found, create them!
+                                        if (!resolvedUserId && row.user_id) {
+                                            const ghostId = String(row.user_id);
+                                            const ghostUsername = row.user; // Username might be same as Title in Tautulli history sometimes
+                                            const ghostTitle = row.user;   // History often only has 'user' (which is title or username)
+
+                                            try {
+                                                // Create the user in Plexmo DB
+                                                // We use INSERT OR IGNORE just in case of parallel batch oddities
+                                                // although we are sequential per server.
+                                                // We set importedAt to now.
+                                                plexmoDb.prepare(`
+                                                    INSERT OR IGNORE INTO users (id, title, username, email, thumb, serverId, importedAt, isAdmin)
+                                                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                                                `).run(
+                                                    ghostId,
+                                                    ghostTitle,
+                                                    ghostUsername,
+                                                    null, // No email
+                                                    "",   // No thumb
+                                                    String(targetId),
+                                                    new Date().toISOString()
+                                                );
+
+                                                // Update local map so next row finds it immediately
+                                                resolvedUserId = ghostId;
+                                                userMap.set(`${String(targetId)}:${row.user}`, ghostId);
+                                                // Also map by ID to be safe for future if we switched lookup strategy
+                                                // userMap.set(`${String(targetId)}:${ghostId}`, ghostId); 
+
+                                                console.log(`[Import] Created Ghost User: ${ghostUsername} (${ghostId}) on server ${targetId}`);
+
+                                            } catch (e) {
+                                                console.error(`[Import] Failed to create ghost user ${ghostUsername}`, e);
+                                            }
+                                        }
+
+                                        if (resolvedUserId) {
+                                            mapped.userId = resolvedUserId;
+                                        } else {
+                                            // Only if truly failed (no user_id available?)
+                                            unknownUsers.add(`${row.user} (ID: ${row.user_id})`);
+                                        }
+
                                         addHistoryEntry(mapped);
                                         totalImported++;
                                         serverItemsProcessed++;
@@ -488,11 +549,21 @@ export async function POST(request: Request) {
                     }
                 }
 
+                // Debug Summary for Users
+                let debugMsg = "";
+                if (unknownUsers.size > 0) {
+                    const sample = Array.from(unknownUsers).slice(0, 5).join(", ");
+                    debugMsg = ` | Unmatched Users: ${unknownUsers.size} (e.g. ${sample})`;
+                    console.warn(`[Import] Unknown Users (${unknownUsers.size}):`, Array.from(unknownUsers));
+                } else {
+                    debugMsg = " | All users matched.";
+                }
+
                 updateJob(job.id, {
                     status: 'completed',
                     progress: 100,
                     itemsProcessed: totalImported,
-                    message: `Import Completed. Imported: ${totalImported}. Skipped: ${skippedCount} (Duplicates/Invalid/Long). Failed: ${failedCount}.`
+                    message: `Import Completed. Imported: ${totalImported}. Skipped: ${skippedCount} (Duplicates/Invalid/Long). Failed: ${failedCount}.${debugMsg}`
                 });
 
             } catch (err: any) {

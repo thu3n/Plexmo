@@ -1,7 +1,7 @@
 
 import WebSocket from 'ws';
 import { runCronJob } from './cron';
-import { listInternalServers } from './servers'; // You might need a way to get servers/tokens
+import { listInternalServers, getServerById } from './servers';
 import { getSetting } from './settings';
 import { resolveServer } from './plex';
 
@@ -95,7 +95,22 @@ function connectToServer(server: any) {
         ws.on('close', () => {
             console.log(`[PlexListener] Disconnected from ${server.name}. Reconnecting in 10s...`);
             activeConnections.delete(server.id);
-            setTimeout(() => connectToServer(server), 10000);
+            setTimeout(async () => {
+                try {
+                    // Check if server still exists and get fresh details (e.g. new token)
+                    const freshServer = await getServerById(server.id);
+                    if (freshServer) {
+                        connectToServer(freshServer);
+                    } else {
+                        console.log(`[PlexListener] Server ${server.name} (${server.id}) has been removed. Stopping reconnection.`);
+                    }
+                } catch (e) {
+                    console.error(`[PlexListener] Error checking server status for ${server.name}:`, e);
+                    // Optionally retry check later? For now, we assume if DB check fails, we stop or let the user restart.
+                    // But to be robust, maybe we should try reconnecting anyway if it was just a DB error?
+                    // Given the user issue is "Zombie Server", stopping is safer than retrying blindly.
+                }
+            }, 10000);
         });
 
     } catch (error) {
