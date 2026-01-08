@@ -588,10 +588,10 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                     const isBlocked = isUserBlockedBySchedule(now, schedule);
 
                     if (isBlocked && userSessions.length > 0) {
-                        const openEvent = db.prepare(`
-                            SELECT id FROM rule_events 
+                        let openEvent = db.prepare(`
+                            SELECT id, details FROM rule_events 
                             WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
-                        `).get(user.userId, instance.id) as { id: number } | undefined;
+                        `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
 
                         if (!openEvent) {
                             logRuleEvent(user.userId, instance.id, JSON.stringify({
@@ -600,8 +600,19 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                 scheduleType: schedule.type,
                                 source: isGlobal ? 'global_rule' : (hasServerRule ? 'server_rule' : 'user_rule'),
                                 instanceName: instance.name,
-                                activeSessions: userSessions.length
+                                activeSessions: userSessions.length,
+                                enforced: false
                             }));
+                            openEvent = db.prepare(`
+                                SELECT id, details FROM rule_events 
+                                WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
+                            `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
+                        } else {
+                            // Check if already enforced
+                            try {
+                                const d = JSON.parse(openEvent.details);
+                                if (d.enforced === true) continue;
+                            } catch (e) { }
                         }
 
                         if (enforce) {
@@ -613,6 +624,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                             console.log(`[Scheduled Access] Rule "${instance.name}" blocking ${user.username} (${userSessions.length} sessions)`);
 
                             // Terminate all active sessions for this user
+                            let anyTerminated = false;
                             for (const session of userSessions) {
                                 const serverId = session.serverId;
                                 const sessionId = session.sessionId || session.sessionKey;
@@ -621,6 +633,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                 if (serverConfig && sessionId) {
                                     try {
                                         await terminateSession(sessionId, serverConfig, terminationReason);
+                                        anyTerminated = true;
 
                                         const webhookIds = instance.discordWebhookIds || [];
                                         if (webhookIds.length === 0 && instance.discordWebhookId) webhookIds.push(instance.discordWebhookId);
@@ -636,6 +649,16 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     } catch (err) {
                                         console.error(`[Scheduled Access] Failed to terminate session ${sessionId}`, err);
                                     }
+                                }
+                            }
+
+                            if (anyTerminated && openEvent) {
+                                try {
+                                    const d = JSON.parse(openEvent.details || "{}");
+                                    d.enforced = true;
+                                    updateRuleEventDetails(openEvent.id, JSON.stringify(d));
+                                } catch (e) {
+                                    console.error("Failed to update scheduled access event details", e);
                                 }
                             }
                         }
@@ -659,10 +682,10 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                     const count = userSessions.length;
                     const isViolating = count > limit;
 
-                    const openEvent = db.prepare(`
-                        SELECT id FROM rule_events 
+                    let openEvent = db.prepare(`
+                        SELECT id, details FROM rule_events 
                         WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
-                    `).get(user.userId, instance.id) as { id: number } | undefined;
+                    `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
 
                     let isExcluded = false;
                     if (isViolating && exclude_same_ip) {
@@ -694,8 +717,19 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                 activeSessions: count,
                                 source: isGlobal ? 'global_rule' : (hasServerRule ? 'server_rule' : 'user_rule'),
                                 instanceName: instance.name,
-                                details: ""
+                                details: "",
+                                enforced: false
                             }));
+                            openEvent = db.prepare(`
+                                SELECT id, details FROM rule_events 
+                                WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
+                            `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
+                        } else {
+                            // Check if already enforced
+                            try {
+                                const d = JSON.parse(openEvent.details);
+                                if (d.enforced === true) continue;
+                            } catch (e) { }
                         }
 
                         if (enforce) {
@@ -715,6 +749,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                 sessionsToKill = userSessions.slice(-killCount);
                             }
 
+                            let anyTerminated = false;
                             for (const s of sessionsToKill) {
                                 const serverId = s.serverId;
                                 const sessionId = s.sessionId || s.sessionKey;
@@ -724,6 +759,8 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     console.log(`[Enforcement] Rule "${instance.name}" terminating ${sessionId} for ${user.username}`);
                                     try {
                                         await terminateSession(sessionId, serverConfig, terminationReason);
+                                        anyTerminated = true;
+
                                         const webhookIds = instance.discordWebhookIds || [];
                                         if (webhookIds.length === 0 && instance.discordWebhookId) webhookIds.push(instance.discordWebhookId);
 
@@ -738,6 +775,16 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     } catch (err) {
                                         console.error(`[Enforcement] Failed to terminate session ${sessionId}`, err);
                                     }
+                                }
+                            }
+
+                            if (anyTerminated && openEvent) {
+                                try {
+                                    const d = JSON.parse(openEvent.details || "{}");
+                                    d.enforced = true;
+                                    updateRuleEventDetails(openEvent.id, JSON.stringify(d));
+                                } catch (e) {
+                                    console.error("Failed to update max concurrent event details", e);
                                 }
                             }
                         }

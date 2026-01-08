@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
             enabled: body.enabled ?? true, // Default to true if not provided
             settings: body.settings,
             discordWebhookId: body.discordWebhookId || null,
+            discordWebhookIds: body.discordWebhookIds || [],
         };
 
         createRuleInstance(newRule, {
