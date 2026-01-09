@@ -1,60 +1,20 @@
 
-import { db } from "./db";
+import { getGroupItemsPaginated } from "./library_groups";
 
-async function verifyMasterData() {
-    console.log("--- Verifying Master Data (Unified Items) ---");
+// Test ID known to exist (used in previous user request)
+const ID = "b18c91cc-f95b-4775-bb44-14c00c7bee2e";
 
-    // 1. Search for Pluribus / Plur1bus
-    const query = `
-        SELECT ratingKey, serverId, title, unifiedItemId, type
-        FROM library_items 
-        WHERE title LIKE '%Pluribus%' OR title LIKE '%Plur1bus%'
-    `;
-    const items = db.prepare(query).all() as any[];
-
-    if (items.length === 0) {
-        console.log("No items found matching 'Pluribus' or 'Plur1bus'.");
-        return;
+console.log("Testing getGroupItemsPaginated...");
+try {
+    const result = getGroupItemsPaginated(ID, 1, 50, "");
+    console.log("Success!");
+    console.log("Total Count:", result.totalCount);
+    console.log("Items Returned:", result.items.length);
+    if (result.items.length > 0) {
+        console.log("First Item ID:", result.items[0].id);
+        console.log("First Item Title:", result.items[0].title);
     }
-
-    console.log(`Found ${items.length} Library Items.`);
-
-    for (const item of items) {
-        console.log(`\n[Library Item] Title: "${item.title}" | Server: ${item.serverId} | Type: ${item.type}`);
-
-        if (!item.unifiedItemId) {
-            console.error(`ERROR: unifiedItemId is NULL! Unification failed for this item.`);
-            continue;
-        }
-
-        console.log(`   -> Unified ID: ${item.unifiedItemId}`);
-
-        // Fetch Unified Item
-        const unified = db.prepare("SELECT * FROM UnifiedItem WHERE id = ?").get(item.unifiedItemId) as any;
-
-        if (!unified) {
-            console.error(`   ERROR: UnifiedItem record not found for ID ${item.unifiedItemId}`);
-            continue;
-        }
-
-        console.log(`   -> [Master Record] Title: "${unified.title}" | GUID: ${unified.guid} | Type: ${unified.type}`);
-
-        // Check Hierarchy if Episode
-        if (item.type === 'episode' || unified.type === 'episode') {
-            if (unified.parentId) {
-                const parent = db.prepare("SELECT * FROM UnifiedItem WHERE id = ?").get(unified.parentId) as any;
-                if (parent) {
-                    console.log(`      -> [Parent/Show] Title: "${parent.title}" | GUID: ${parent.guid}`);
-                } else {
-                    console.error(`      ERROR: Parent UnifiedItem not found for ID ${unified.parentId}`);
-                }
-            } else {
-                console.warn(`      WARNING: Episode has no parentId set.`);
-            }
-        }
-    }
-}
-
-if (require.main === module) {
-    verifyMasterData().catch(console.error);
+} catch (e: any) {
+    console.error("Test Failed:", e.message);
+    if (e.message.includes("syntax")) console.error("Details:", e);
 }
