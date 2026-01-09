@@ -109,6 +109,7 @@ export async function POST(request: Request) {
                 // B. Pre-fetch Active Sessions (To prevent "ghost" history of ongoing items)
                 updateJob(job.id, { message: 'Checking active sessions...', progress: 1 });
                 const activeSessionsMap = new Map<string, number>(); // Key: "${user}-${rating_key}", Value: started_timestamp
+                const seriesMetaCache = new Map<string, { year?: number, guid?: string, imdb?: string, tmdb?: string, tvdb?: string }>();
                 try {
                     const actRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_activity`);
                     if (actRes.ok) {
@@ -341,6 +342,42 @@ export async function POST(request: Request) {
                             }
 
 
+                            // --- PRE-FETCH SERIES METADATA (For linking Episodes to Series correctly) ---
+                            // Check for episodes with grandparent_rating_key that we haven't cached yet
+                            const neededKeys = new Set<string>();
+                            records.forEach((r: any) => {
+                                if (r.media_type === 'episode' && r.grandparent_rating_key && !seriesMetaCache.has(String(r.grandparent_rating_key))) {
+                                    neededKeys.add(String(r.grandparent_rating_key));
+                                }
+                            });
+
+                            if (neededKeys.size > 0) {
+                                // Fetch in chunks or sequentially? Tautulli might rate limit.
+                                console.log(`[Import] Fetching metadata for ${neededKeys.size} new series...`);
+                                for (const key of neededKeys) {
+                                    try {
+                                        const metaRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_metadata&rating_key=${key}`);
+                                        if (metaRes.ok) {
+                                            const metaJson = await metaRes.json();
+                                            const d = metaJson.response?.data;
+                                            if (d) {
+                                                seriesMetaCache.set(key, {
+                                                    year: d.year,
+                                                    guid: d.guid,
+                                                    imdb: d.imdb_id || d.imdb_id_s,
+                                                    tmdb: d.tmdb_id,
+                                                    tvdb: d.tvdb_id
+                                                });
+                                            } else {
+                                                seriesMetaCache.set(key, {});
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.warn(`Failed to fetch metadata for GP Key ${key}`, e);
+                                    }
+                                }
+                            }
+
                             // Process Batch in Transaction
                             console.time(`[Perf] Transaction Batch ${start}`);
                             const processBatch = plexmoDb.transaction((entries: any[]) => {
@@ -415,7 +452,32 @@ export async function POST(request: Request) {
                                             ip_address: row.ip_address,
                                             platform: row.platform,
                                             transcode_decision: row.transcode_decision,
+                                            imdb_id: row.imdb_id,
+                                            tmdb_id: row.tmdb_id,
+                                            tvdb_id: row.tvdb_id,
+                                            grandparent_rating_key: row.grandparent_rating_key,
+                                            parent_rating_key: row.parent_rating_key,
+                                            guid: row.guid, // Sometimes available
+
+
+                                            grandparent_guid: row.grandparent_guid, // Rare but possible
                                         };
+
+                                        // Apply cached Series Metadata if available
+                                        if (row.grandparent_rating_key) {
+                                            const sMeta = seriesMetaCache.get(String(row.grandparent_rating_key));
+                                            if (sMeta) {
+                                                if (sMeta.year) compatibleEntry.grandparent_year = sMeta.year;
+                                                if (sMeta.guid) compatibleEntry.grandparent_guid = sMeta.guid;
+                                                // We could also enrich IDs if Tautulli row lacked them but metadata has them?
+                                                // Metadata usually has better IDs for the SERIES.
+                                                // But the entry is the EPISODE. We shouldn't put Series IDs on the Episode ID fields directly?
+                                                // Actually, `grandparent_guid` IS the Series ID (Plex GUID).
+                                                // We mapped `guids` in tautulli-mapper using `entry.guid` etc.
+                                                // `entry.grandparent_guid` is mapped to `meta.grandparentGuid`.
+                                                // This is correct.
+                                            }
+                                        }
 
                                         if (!compatibleEntry.stopped && compatibleEntry.started && row.duration) {
                                             compatibleEntry.stopped = compatibleEntry.started + row.duration;

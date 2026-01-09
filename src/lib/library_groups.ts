@@ -32,6 +32,7 @@ export type MergedItem = {
         imdb?: string;
         tmdb?: string;
         tvdb?: string;
+        plex?: string;
     };
     posterPath?: string;
 };
@@ -182,7 +183,13 @@ export const getGroupItemsPaginated = (groupId: string, page: number = 1, pageSi
             if (g.id?.startsWith('imdb://')) externalIds.imdb = g.id;
             if (g.id?.startsWith('tmdb://')) externalIds.tmdb = g.id;
             if (g.id?.startsWith('tvdb://')) externalIds.tvdb = g.id;
+            if (g.id?.startsWith('plex://')) externalIds.plex = g.id;
         });
+
+        // Fail-safe: Use top-level guid if it is a plex:// URI
+        if (!externalIds.plex && meta.guid && meta.guid.startsWith('plex://')) {
+            externalIds.plex = meta.guid;
+        }
 
         // Resolve Server Name
         const serverName = group.libraries.find(l => l.server_id === row.serverId)?.server_name || "Unknown";
@@ -204,6 +211,7 @@ export const getGroupItemsPaginated = (groupId: string, page: number = 1, pageSi
         if (externalIds.imdb && mergedMap.has(externalIds.imdb)) match = mergedMap.get(externalIds.imdb);
         else if (externalIds.tmdb && mergedMap.has(externalIds.tmdb)) match = mergedMap.get(externalIds.tmdb);
         else if (externalIds.tvdb && mergedMap.has(externalIds.tvdb)) match = mergedMap.get(externalIds.tvdb);
+        else if (externalIds.plex && mergedMap.has(externalIds.plex)) match = mergedMap.get(externalIds.plex);
 
         // B. Fallback: Match by Title + Year
         if (!match) {
@@ -231,6 +239,7 @@ export const getGroupItemsPaginated = (groupId: string, page: number = 1, pageSi
             // Re-map with new IDs if possible to improve future matches
             if (externalIds.imdb) mergedMap.set(externalIds.imdb, match);
             if (externalIds.tmdb) mergedMap.set(externalIds.tmdb, match);
+            if (externalIds.plex) mergedMap.set(externalIds.plex, match);
 
             // Update poster if null and we found one
             // Preference: If existing is missing, use new one. 
@@ -257,6 +266,7 @@ export const getGroupItemsPaginated = (groupId: string, page: number = 1, pageSi
             if (externalIds.imdb) mergedMap.set(externalIds.imdb, newItem);
             if (externalIds.tmdb) mergedMap.set(externalIds.tmdb, newItem);
             if (externalIds.tvdb) mergedMap.set(externalIds.tvdb, newItem);
+            if (externalIds.plex) mergedMap.set(externalIds.plex, newItem);
 
             // Always register slug
             const slug = getSlug(row.title, row.year);

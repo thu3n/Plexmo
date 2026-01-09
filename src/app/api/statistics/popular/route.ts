@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN library_items l ON h.ratingKey = l.ratingKey AND h.serverId = l.serverId
             WHERE h.startTime > ? 
             ORDER BY h.startTime DESC
-            LIMIT 5000
+            LIMIT 100000
         `;
 
         const rows = db.prepare(query).all(cutoff) as any[];
@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
                     if (g.id?.startsWith('imdb://')) ids.imdb = g.id;
                     if (g.id?.startsWith('tmdb://')) ids.tmdb = g.id;
                     if (g.id?.startsWith('tvdb://')) ids.tvdb = g.id;
+                    if (g.id?.startsWith('plex://')) ids.plex = g.id;
                 });
                 return { ids, meta };
             } catch (e) { return { ids: {}, meta: null }; }
@@ -90,6 +91,27 @@ export async function GET(request: NextRequest) {
             const cleanTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '');
             return `${cleanTitle}-${year || 'xxxx'}`;
         };
+
+        // Pre-fetch all TV Shows from library_items to allow ID-based merging for Episodes
+        // even if history logs don't have the IDs or have different names.
+        const allShows = db.prepare("SELECT title, year, meta_json FROM library_items WHERE type = 'show'").all() as any[];
+        const showIdLookup = new Map<string, any>(); // Slug -> { ids }
+        const showTitleLookup = new Map<string, any>(); // TitleSlug -> { ids } (Fallback)
+
+        const getTitleSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        allShows.forEach(show => {
+            const { ids } = extractGuids(show.meta_json);
+            if (Object.keys(ids).length > 0) {
+                // Precision Match
+                const slug = getSlug(show.title, show.year);
+                showIdLookup.set(slug, ids);
+
+                // Fallback Match (Last One Wins, usually fine for unique titles)
+                const titleSlug = getTitleSlug(show.title);
+                showTitleLookup.set(titleSlug, ids);
+            }
+        });
 
         for (const row of rows) {
             // CHECK UNIFIED GROUP FIRST
@@ -103,13 +125,20 @@ export async function GET(request: NextRequest) {
             const ids = { ...libraryIds, ...historyIds };
             const effectiveMeta = { ...lMeta, ...hMeta };
 
-            // 80% Completion Check
+            // Completion Check: 15% (Lowered from 80% to catch multi-session watches like Traacker263)
+            // Traacker263 had sessions of ~16%, ~60%, ~20%. A 15% filter captures them.
             const playedDurationMs = (row.duration || 0) * 1000;
             const totalDurationMs = effectiveMeta?.duration || 0;
 
             if (totalDurationMs > 0) {
                 const percentage = playedDurationMs / totalDurationMs;
-                if (percentage < 0.8) continue;
+
+                // DEBUG: Inspect Traacker263
+                if (row.user === 'Traacker263') {
+                    // Debug removed
+                }
+
+                if (percentage < 0.15) continue;
             }
 
             // Determine Type
@@ -119,8 +148,11 @@ export async function GET(request: NextRequest) {
                 else itemType = 'movie';
             }
 
+
+
             // Keys Collection for this Item
             const itemKeys = new Set<string>();
+
             let displayTitle = row.title;
             let thumb = row.thumb || (effectiveMeta?.thumb || effectiveMeta?.parentThumb || effectiveMeta?.grandparentThumb);
             let detectedType = itemType;
@@ -164,7 +196,31 @@ export async function GET(request: NextRequest) {
                 if (type === 'show') {
                     // SHOW AGGREGATION
                     if (seriesName) {
-                        itemKeys.add(`series:${getSlug(seriesName)}`); // Slug Key
+                        const seriesYear = effectiveMeta?.grandparentYear;
+                        const sSlug = getSlug(seriesName, seriesYear);
+                        itemKeys.add(`series:${sSlug}`); // Slug Key
+
+                        // CORE FIX: Match by Grandparent GUID (Plex Universal ID) if available
+                        if (effectiveMeta?.grandparentGuid) {
+                            itemKeys.add(effectiveMeta.grandparentGuid);
+                        }
+
+                        // ID-based Lookup for Shows
+                        let extraIds = showIdLookup.get(sSlug);
+                        if (!extraIds) {
+                            // Try Fallback (Title Only)
+                            // We need to re-generate strictly title slug here
+                            const justTitleSlug = getTitleSlug(seriesName);
+                            extraIds = showTitleLookup.get(justTitleSlug);
+                        }
+
+                        if (extraIds) {
+                            if (extraIds.imdb) itemKeys.add(extraIds.imdb);
+                            if (extraIds.tmdb) itemKeys.add(extraIds.tmdb);
+                            if (extraIds.tvdb) itemKeys.add(extraIds.tvdb);
+                            if (extraIds.plex) itemKeys.add(extraIds.plex);
+                        }
+
                         // Ideally we'd add TMDB/TVDB for the SHOW here if we had it.
                         // But we mostly rely on series name slug for history aggregation.
                         if (!unifiedGroup) displayTitle = seriesName; // Only override title if NOT grouped
@@ -183,7 +239,10 @@ export async function GET(request: NextRequest) {
 
                     if (ids.imdb) itemKeys.add(ids.imdb);
                     if (ids.tmdb) itemKeys.add(ids.tmdb);
+                    if (ids.imdb) itemKeys.add(ids.imdb);
+                    if (ids.tmdb) itemKeys.add(ids.tmdb);
                     if (ids.tvdb) itemKeys.add(ids.tvdb);
+                    if (ids.plex) itemKeys.add(ids.plex);
 
                     if (season !== undefined && episode !== undefined && seriesName) {
                         const slugKey = `show:${getSlug(seriesName)}:s${season}:e${episode}`;
@@ -204,8 +263,11 @@ export async function GET(request: NextRequest) {
 
                 if (ids.imdb) itemKeys.add(ids.imdb);
                 if (ids.tmdb) itemKeys.add(ids.tmdb);
+                if (ids.plex) itemKeys.add(ids.plex);
                 // Slug Fallback
                 const slugKey = `movie:${getSlug(row.title, year)}`;
+                itemKeys.add(slugKey);
+
                 itemKeys.add(slugKey);
 
                 detectedType = 'movie';
@@ -213,31 +275,73 @@ export async function GET(request: NextRequest) {
 
             if (itemKeys.size === 0) continue;
 
-            // TRANSITIVE MATCHING
-            // Check if ANY of our keys point to an existing item
-            let match: any = undefined;
+            // TRANSITIVE MATCHING (Robust Merge)
+            // 1. Find all existing items that this row matches
+            const matchedItems = new Set<any>();
             for (const key of itemKeys) {
                 if (mergedMap.has(key)) {
-                    match = mergedMap.get(key);
-                    break;
+                    matchedItems.add(mergedMap.get(key));
                 }
             }
 
-            if (match) {
-                // Existing Item Found -> Merge
-                match.users.add(row.user);
-                match.totalPlays += 1;
+            let primaryItem: any = undefined;
 
-                // Map ALL new keys to this existing item (Expansion)
+            if (matchedItems.size > 0) {
+                // We found matches. If > 1, we must merge them together!
+                const matchesArray = Array.from(matchedItems);
+                primaryItem = matchesArray[0];
+
+                if (matchedItems.size > 1) {
+                    // Merge secondary items into primary
+                    for (let i = 1; i < matchesArray.length; i++) {
+                        const victim = matchesArray[i];
+                        if (victim === primaryItem) continue;
+
+                        // Absorb users and plays
+                        victim.users.forEach((u: string) => primaryItem.users.add(u));
+                        primaryItem.totalPlays += victim.totalPlays;
+
+                        // Absorb keys: We must find all keys pointing to victim and point them to primary
+                        // This is expensive to search map values. 
+                        // Optimization: We rely on the fact that we only encounter keys via iteration.
+                        // But strictly, we should update the map. 
+                        // A better way: Items could verify their identity? 
+                        // For this scope (5000 rows), we can just re-map keys seen *so far*? 
+                        // No, that's hard.
+                        // Actually, since we only map keys -> Object, we just need to ensure future lookups find Primary.
+                        // BUT, we don't know *which* keys point to Victim.
+                        // However, we DO know the keys of the Current Row connected them.
+                        // Is it possible other keys point to Victim? Yes.
+                        // Simplification: We accept that old keys pointing to Victim are "dead" for now unless we do a reverse lookup map.
+                        // BUT, `items` Set must remove Victim.
+                        items.delete(victim);
+                    }
+
+                    // CRITICAL: We need to inform the map that keys pointing to Victims now point to Primary.
+                    // Doing a full map scan is O(MapSize). For 5000 rows, MapSize ~5000. Acceptable?
+                    // 5000 iterations is nothing in JS.
+                    mergedMap.forEach((val, key) => {
+                        if (matchedItems.has(val) && val !== primaryItem) {
+                            mergedMap.set(key, primaryItem);
+                        }
+                    });
+                }
+            }
+
+            if (primaryItem) {
+                // Merge current row into Primary
+                primaryItem.users.add(row.user);
+                primaryItem.totalPlays += 1;
+
+                // Map new keys to Primary
                 for (const key of itemKeys) {
-                    if (!mergedMap.has(key)) {
-                        mergedMap.set(key, match);
+                    if (!mergedMap.has(key) || mergedMap.get(key) !== primaryItem) {
+                        mergedMap.set(key, primaryItem);
                     }
                 }
 
-                // Metadata Upgrade (optional)
-                if (!match.thumb && thumb) match.thumb = thumb;
-                // If the new row has IDs but the match didn't, we effectively just enriched the match via the new keys.
+                // Metadata Upgrade
+                if (!primaryItem.thumb && thumb) primaryItem.thumb = thumb;
 
             } else {
                 // New Item

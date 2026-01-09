@@ -744,11 +744,11 @@ export default function StatisticsPage() {
                         <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
                             {!itemUsers ? (
                                 <div className="text-center py-8 text-gray-500">Loading details...</div>
-                            ) : itemUsers.users?.length === 0 ? (
+                            ) : itemUsers?.users?.length === 0 ? (
                                 <div className="text-center py-8 text-gray-500">No users found.</div>
                             ) : (
                                 <div className="space-y-3">
-                                    {itemUsers.users.map((user: any, i: number) => (
+                                    {itemUsers?.users?.map((user: any, i: number) => (
                                         <div key={i} className="bg-white/5 p-3 rounded-lg border border-white/5">
                                             <div className="flex items-center gap-3 mb-2">
                                                 <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">

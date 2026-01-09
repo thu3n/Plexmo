@@ -60,7 +60,15 @@ export type TautulliMetadataRow = {
     parent_media_index: number; // Season
     media_index: number; // Episode
     rating_key: number;
+    parent_rating_key?: number;
+    grandparent_rating_key?: number;
     duration: number;
+    imdb_id?: string;
+    tmdb_id?: string;
+    tvdb_id?: string;
+    guid?: string; // Plex GUID
+    grandparent_guid?: string;
+    grandparent_year?: number;
 };
 
 // Combine all sources into one for mapping
@@ -135,6 +143,20 @@ export function mapTautulliToPlexmo(
         // Server
         serverId: serverMap[entry.server_id] || defaultServerId,
     };
+
+    // Construct GUIDs
+    const guids = [];
+    if (entry.imdb_id) guids.push({ id: `imdb://${entry.imdb_id}` });
+    if (entry.tmdb_id) guids.push({ id: `tmdb://${entry.tmdb_id}` });
+    if (entry.tvdb_id) guids.push({ id: `tvdb://${entry.tvdb_id}` });
+    // If Tautulli gives us the raw Plex GUID, use it too (often contains agents)
+    if (entry.guid) guids.push({ id: entry.guid });
+
+    if (guids.length > 0) meta.Guid = guids;
+    if (entry.grandparent_guid) meta.grandparentGuid = entry.grandparent_guid;
+    if (entry.grandparent_rating_key) meta.grandparentRatingKey = entry.grandparent_rating_key;
+    if (entry.grandparent_year) meta.grandparentYear = entry.grandparent_year;
+    if (entry.parent_rating_key) meta.parentRatingKey = entry.parent_rating_key;
 
     // Plexmo History uses seconds for start/stop/duration.
     // Tautulli uses Seconds for start/stop, but MS for duration?
