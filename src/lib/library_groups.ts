@@ -130,46 +130,143 @@ export const updateLibraryGroup = (id: string, name: string, libraries: { key: s
 
 export const getGroupItemsPaginated = (groupId: string, page: number = 1, pageSize: number = 50, search?: string) => {
     const group = getLibraryGroup(groupId);
-    if (!group || !group.libraries) return { items: [], totalCount: 0 };
+    if (!group || !group.libraries || group.libraries.length === 0) return { items: [], totalCount: 0 };
 
-    // 1. Fetch ALL items from ALL member libraries
-    // We fetch basic info + meta_json to do the merging in-memory.
-    // Ideally, we'd do this in SQL, but parsing JSON and matching external IDs is complex in SQLite.
-    // For large libraries, this might be slow. Optimization: Cache the merged result? 
-    // For now, let's fetch necessary columns.
+    // Conditions for Group Members
+    // (serverId = '...' AND libraryKey = '...') OR ...
+    const memberClauses = group.libraries.map(() => `(li.libraryKey = ? AND li.serverId = ?)`).join(' OR ');
+    const memberParams = group.libraries.flatMap(l => [l.library_key, l.server_id]);
 
-    const placeholders = group.libraries.map(() => '(libraryKey = ? AND serverId = ?)').join(' OR ');
-    let params = group.libraries.flatMap(l => [l.library_key, l.server_id]);
+    // 1. Count Total (Distinct Unified Items satisfying the group)
+    let countSql = `
+        SELECT COUNT(DISTINCT ui.id) as count
+        FROM UnifiedItem ui
+        JOIN library_items li ON li.unifiedItemId = ui.id
+        WHERE ui.parentId IS NULL AND (${memberClauses})
+    `;
 
-    if (!placeholders) return { items: [], totalCount: 0 };
+    // Search Filter
+    if (search) {
+        countSql += ` AND ui.title LIKE ?`;
+    }
 
-    let query = `
-        SELECT ratingKey, libraryKey, serverId, title, year, thumb, type, addedAt, meta_json 
-        FROM library_items 
-        WHERE (${placeholders})
+    const countParams = [...memberParams];
+    if (search) countParams.push(`%${search}%`);
+
+    const countResult = db.prepare(countSql).get(...countParams) as { count: number };
+    const totalCount = countResult.count;
+
+    if (totalCount === 0) {
+        return { items: [], totalCount: 0, group: { name: group.name, type: group.type, id: group.id } };
+    }
+
+    // 2. Fetch Page of Unified Items (Sorted by Max AddedAt)
+    // We group by UnifiedItem to sort by the 'latest' added item within this group.
+
+    let fetchSql = `
+        SELECT ui.*, MAX(li.addedAt) as latestAdded
+        FROM UnifiedItem ui
+        JOIN library_items li ON li.unifiedItemId = ui.id
+        WHERE ui.parentId IS NULL AND (${memberClauses})
     `;
 
     if (search) {
-        query += " AND title LIKE ?";
-        params.push(`%${search}%`);
+        fetchSql += ` AND ui.title LIKE ?`;
     }
 
-    const rows = db.prepare(query).all(...params) as any[];
+    fetchSql += ` GROUP BY ui.id`;
+    fetchSql += ` ORDER BY latestAdded DESC`; // Sort by most recently added
+    fetchSql += ` LIMIT ? OFFSET ?`;
 
-    // 2. Merge Logic
-    // REFACTORED: Use the shared helper
-    const mergedMap = buildUnifiedItemMap(rows, group);
+    const fetchParams = [...countParams, pageSize, (page - 1) * pageSize];
+    const unifiedRows = db.prepare(fetchSql).all(...fetchParams) as any[];
 
-    // 3. Convert to Array and Sort
-    // We need to deduplicate values() because we stored usage keys multiple times (imdb, tmdb, slug)
-    const uniqueItems = Array.from(new Set(mergedMap.values()));
+    // 3. Fetch Sources (Children Library Items) for these Unified Items
+    // We only fetch children that belong to the requested group?
+    // OR do we show all sources even if some are outside the group?
+    // Usually, consistent behavior implies showing what's in the group.
+    // However, if I see "Movie X" and it's also on Server C (which is not in this group), maybe I want to know?
+    // But sticking to "Group View" usually means checking what's IN the group.
+    // The previous implementation used `buildUnifiedItemMap(rows, group)`, where `rows` were filtered to the group.
+    // So distinct behavior was: Show only sources in the group.
 
-    // Sort by Added At (descending)
-    uniqueItems.sort((a, b) => (new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
+    const unifiedIds = unifiedRows.map(r => r.id);
+    if (unifiedIds.length === 0) return { items: [], totalCount: 0, group: { name: group.name, type: group.type, id: group.id } };
 
-    // 4. Pagination
-    const totalCount = uniqueItems.length;
-    const items = uniqueItems.slice((page - 1) * pageSize, page * pageSize);
+    const childrenSql = `
+        SELECT * FROM library_items 
+        WHERE unifiedItemId IN (${unifiedIds.map(() => '?').join(',')})
+        AND (${memberClauses})
+    `;
+    const childrenParams = [...unifiedIds, ...memberParams];
+    const childrenRows = db.prepare(childrenSql).all(...childrenParams) as any[];
+
+    // Map children by unifiedItemId
+    const childrenMap = new Map<string, any[]>();
+    for (const child of childrenRows) {
+        if (!childrenMap.has(child.unifiedItemId)) childrenMap.set(child.unifiedItemId, []);
+        childrenMap.get(child.unifiedItemId)?.push(child);
+    }
+
+    // 4. Transform to MergedItem
+    const items: MergedItem[] = unifiedRows.map(ui => {
+        const sourcesRaw = childrenMap.get(ui.id) || [];
+
+        const sources: ItemSource[] = sourcesRaw.map(child => {
+            // Retrieve Server Name locally or from helper? 
+            // We can find it in group.libraries
+            const sName = group.libraries?.find(l => l.server_id === child.serverId)?.server_name || "Unknown";
+
+            // Meta parse for resolution
+            let resolution = undefined;
+            let bitrate = undefined;
+            try {
+                const m = JSON.parse(child.meta_json || '{}');
+                resolution = m.videoResolution || (m.Media?.[0]?.videoResolution);
+                bitrate = m.Media?.[0]?.bitrate;
+            } catch (e) { }
+
+            return {
+                ratingKey: child.ratingKey,
+                libraryKey: child.libraryKey,
+                serverId: child.serverId,
+                serverName: sName,
+                resolution,
+                bitrate
+            };
+        });
+
+        return {
+            id: ui.id, // Using Unified UUID now! Before it was GUID/Slug. This might break keys if relied upon? 
+            // Frontend usually uses ID for key. UUID is fine.
+            title: ui.title,
+            year: ui.year,
+            type: ui.type as 'movie' | 'show',
+            addedAt: ui.latestAdded, // Use the max date we found
+            thumb: ui.poster, // Unified Poster
+            posterPath: ui.poster ? `/api/proxy/image?serverId=unified&thumb=${encodeURIComponent(ui.poster)}` : undefined,
+            // Note: Proxy needs to handle 'unified' serverId or we use a raw URL if it's external?
+            // Wait, ui.poster is usually a path from one of the items or an external URL. 
+            // If it came from our previous migration, it's a `/library/metadata/...` path or a URL.
+            // If it is a Plex path, we need a real Server ID to proxy it.
+            // Problem: UnifiedItem stores 'poster' string. 
+            // If we used `merged.posterPath` in migration, it was `/api/proxy/image...` already?
+            // Let's check verification output or migration logic.
+            // Migration script used `merged.posterPath`. 
+            // `buildUnifiedItemMap` sets `posterPath` to `/api/proxy/image?serverId=...`.
+            // So DB stores the full proxy URL. 
+            // So we can just use `ui.poster` as `posterPath`.
+
+            sources,
+            overview: undefined, // We didn't store overview in UnifiedItem yet.
+            externalIds: {
+                imdb: ui.guid.startsWith('imdb') ? ui.guid : undefined,
+                // We stored "GUID" as the main ID. But we didn't store ALL external IDs in UnifiedItem.
+                // We rely on children for deep metadata if needed.
+                // For list view, this is sufficient.
+            }
+        };
+    });
 
     return { items, totalCount, group: { name: group.name, type: group.type, id: group.id } };
 };

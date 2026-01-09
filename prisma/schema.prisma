@@ -45,4 +45,46 @@ model MediaStatistics {
   lastSeen      DateTime @updatedAt
   
   meta_json     String?  // JSON for flexibility
+  uniqueUsers   Int      @default(0)
+}
+
+  items         LibraryItem[]
+}
+
+model UnifiedItem {
+  id            String   @id @default(cuid())
+  guid          String   @unique
+  title         String
+  year          Int?
+  poster        String?
+  type          String   // 'movie' or 'show' or 'episode'
+  
+  // Hierarchy
+  parentId      String?
+  parent        UnifiedItem? @relation("Hierarchy", fields: [parentId], references: [id])
+  children      UnifiedItem[] @relation("Hierarchy")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items         LibraryItem[]
+}
+
+model LibraryItem {
+  ratingKey     String
+  serverId      String
+  libraryKey    String
+  title         String
+  year          Int?
+  thumb         String?
+  type          String?
+  addedAt       DateTime? // SQL stores as TEXT, Prisma DateTime?
+  updatedAt     DateTime // SQL TEXT
+  meta_json     String?
+
+  unifiedItemId String?
+  unifiedItem   UnifiedItem? @relation(fields: [unifiedItemId], references: [id])
+
+  @@id([ratingKey, serverId])
+  @@map("library_items")
 }

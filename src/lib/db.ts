@@ -402,6 +402,33 @@ try {
     db.prepare("ALTER TABLE media_statistics ADD COLUMN uniqueUsers INTEGER DEFAULT 0").run();
   } catch (e: any) { }
 
+  // Migration: UnifiedItem Table (Ensure it exists)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS UnifiedItem (
+      id TEXT PRIMARY KEY,
+      guid TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      year INTEGER,
+      poster TEXT,
+      type TEXT,
+      parentId TEXT,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (parentId) REFERENCES UnifiedItem(id) ON DELETE SET NULL
+    );
+  `);
+
+  // Migration: Add parentId to UnifiedItem if missing
+  try {
+    db.prepare("ALTER TABLE UnifiedItem ADD COLUMN parentId TEXT").run();
+  } catch (e) { }
+
+  // Migration: Add unifiedItemId to library_items if missing
+  try {
+    db.prepare("ALTER TABLE library_items ADD COLUMN unifiedItemId TEXT").run();
+  } catch (e) { }
+
+
   // Migration: Create libraries table if it doesn't exist (handled by CREATE TABLE IF NOT EXISTS above, 
   // but if we were adding columns to existing, we'd do it here. 
   // Since it's a new table completely, the CREATE block handles it for new sets.
