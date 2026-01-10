@@ -253,6 +253,24 @@ export const resolveServer = (server?: PlexServerConfig): PlexServerConfig => {
   };
 };
 
+export const normalizePlexUrl = (url: string): string => {
+  let normalized = url.trim();
+
+  // 1. Ensure Scheme
+  if (!normalized.match(/^https?:\/\//)) {
+    normalized = `http://${normalized}`;
+  }
+
+  // 2. Fix missing colon before port 32400 (common copy-paste error)
+  // Logic: Ends with 32400, but NOT :32400
+  // e.g. "play.geek.nu32400" -> "play.geek.nu:32400"
+  if (normalized.endsWith("32400") && !normalized.endsWith(":32400")) {
+    normalized = normalized.replace(/32400$/, ":32400");
+  }
+
+  return normalized.replace(/\/$/, ""); // Ensure no trailing slash
+};
+
 export const plexFetch = async (
   path: string,
   params: Record<string, string | number> = {},

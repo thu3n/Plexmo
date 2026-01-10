@@ -428,6 +428,17 @@ try {
     db.prepare("ALTER TABLE library_items ADD COLUMN unifiedItemId TEXT").run();
   } catch (e) { }
 
+  // Migration: Add meta_json to UnifiedItem
+  try {
+    db.prepare("ALTER TABLE UnifiedItem ADD COLUMN meta_json TEXT").run();
+  } catch (e) { }
+
+  // Index extraction for performance
+  try {
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_meta_parent ON UnifiedItem(json_extract(meta_json, '$.parentThumb'))").run();
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_meta_grandparent ON UnifiedItem(json_extract(meta_json, '$.grandparentThumb'))").run();
+  } catch (e) { }
+
 
   // Migration: Create libraries table if it doesn't exist (handled by CREATE TABLE IF NOT EXISTS above, 
   // but if we were adding columns to existing, we'd do it here. 

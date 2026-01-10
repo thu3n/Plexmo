@@ -122,11 +122,7 @@ export async function POST(req: NextRequest) {
             // Start sync in background
             // Dynamic import to avoid circular dependency issues
             import("@/lib/cron_reconcile_stats").then(({ reconcileStatistics }) => {
-                reconcileStatistics().catch(err => {
-                    console.error(`[API] Reconciliation failed for job ${job.id}:`, err);
-                    // We should ideally update job status to failed here if the job system supports it
-                    // The job system likely tracks status in memory or DB.
-                });
+                reconcileStatistics(job.id); // Error handling is now inside properly
             });
 
             return NextResponse.json({ job });

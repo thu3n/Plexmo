@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { plexFetch } from "@/lib/plex";
+import { plexFetch, normalizePlexUrl } from "@/lib/plex";
 
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const baseUrl = String(body.baseUrl || "").trim();
+        const rawUrl = String(body.baseUrl || "").trim();
+        const baseUrl = normalizePlexUrl(rawUrl);
         const token = String(body.token || "").trim();
 
         if (!baseUrl || !token) {
