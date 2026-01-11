@@ -90,7 +90,11 @@ try {
       device TEXT,
       ip TEXT,
       meta_json TEXT,
-      pausedCounter INTEGER DEFAULT 0
+      pausedCounter INTEGER DEFAULT 0,
+      plex_guid TEXT,
+      imdb_id TEXT,
+      tmdb_id TEXT,
+      tvdb_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS active_sessions (
@@ -282,6 +286,12 @@ try {
     CREATE INDEX IF NOT EXISTS idx_history_dup_check ON activity_history(user, ratingKey, startTime);
     CREATE INDEX IF NOT EXISTS idx_active_dup_check ON active_sessions(user, ratingKey, startTime);
     CREATE INDEX IF NOT EXISTS idx_history_starttime ON activity_history(startTime);
+
+    -- New Indexes for Matching
+    CREATE INDEX IF NOT EXISTS idx_history_plex_guid ON activity_history(plex_guid);
+    CREATE INDEX IF NOT EXISTS idx_history_imdb ON activity_history(imdb_id);
+    CREATE INDEX IF NOT EXISTS idx_history_tmdb ON activity_history(tmdb_id);
+
   `);
 
 
@@ -305,6 +315,13 @@ try {
   try {
     db.prepare("ALTER TABLE activity_history ADD COLUMN meta_json TEXT").run();
   } catch (e: any) { }
+
+  // Migration: Add new ID columns to activity_history
+  try { db.prepare("ALTER TABLE activity_history ADD COLUMN plex_guid TEXT").run(); } catch (e) { }
+  try { db.prepare("ALTER TABLE activity_history ADD COLUMN imdb_id TEXT").run(); } catch (e) { }
+  try { db.prepare("ALTER TABLE activity_history ADD COLUMN tmdb_id TEXT").run(); } catch (e) { }
+  try { db.prepare("ALTER TABLE activity_history ADD COLUMN tvdb_id TEXT").run(); } catch (e) { }
+
 
   // Migration: Add meta_json to active_sessions
   try {
@@ -439,6 +456,18 @@ try {
     db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_meta_grandparent ON UnifiedItem(json_extract(meta_json, '$.grandparentThumb'))").run();
   } catch (e) { }
 
+  // Migration: Add ID columns to UnifiedItem
+  try { db.prepare("ALTER TABLE UnifiedItem ADD COLUMN imdb_id TEXT").run(); } catch (e) { }
+  try { db.prepare("ALTER TABLE UnifiedItem ADD COLUMN tmdb_id TEXT").run(); } catch (e) { }
+  try { db.prepare("ALTER TABLE UnifiedItem ADD COLUMN tvdb_id TEXT").run(); } catch (e) { }
+
+  // Indexes for UnifiedItem IDs
+  try {
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_imdb ON UnifiedItem(imdb_id)").run();
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_tmdb ON UnifiedItem(tmdb_id)").run();
+  } catch (e) { }
+
+
 
   // Migration: Create libraries table if it doesn't exist (handled by CREATE TABLE IF NOT EXISTS above, 
   // but if we were adding columns to existing, we'd do it here. 
@@ -472,6 +501,7 @@ try {
       all: () => { throw new Error("Database not initialized (Check Permissions)"); },
       run: () => { throw new Error("Database not initialized (Check Permissions)"); },
     }),
+    transaction: () => () => { throw new Error("Database not initialized (Check Permissions)"); },
   };
 }
 

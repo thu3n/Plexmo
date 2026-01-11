@@ -110,6 +110,7 @@ export async function POST(request: Request) {
                 updateJob(job.id, { message: 'Checking active sessions...', progress: 1 });
                 const activeSessionsMap = new Map<string, number>(); // Key: "${user}-${rating_key}", Value: started_timestamp
                 const seriesMetaCache = new Map<string, { year?: number, guid?: string, imdb?: string, tmdb?: string, tvdb?: string }>();
+                const movieMetaCache = new Map<string, { guid?: string, imdb?: string, tmdb?: string }>();
                 try {
                     const actRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_activity`);
                     if (actRes.ok) {
@@ -343,14 +344,21 @@ export async function POST(request: Request) {
 
 
                             // --- PRE-FETCH SERIES METADATA (For linking Episodes to Series correctly) ---
-                            // Check for episodes with grandparent_rating_key that we haven't cached yet
+                            // AND MOVIES METADATA (For linking Movies to UnifiedItems)
                             const neededKeys = new Set<string>();
+                            const neededMovieKeys = new Set<string>();
+
                             records.forEach((r: any) => {
                                 if (r.media_type === 'episode' && r.grandparent_rating_key && !seriesMetaCache.has(String(r.grandparent_rating_key))) {
                                     neededKeys.add(String(r.grandparent_rating_key));
                                 }
+                                if (r.media_type === 'movie' && r.rating_key && !movieMetaCache.has(String(r.rating_key))) {
+                                    // Also check if the row itself ALREADY has good data? Cur verified it doesn't.
+                                    neededMovieKeys.add(String(r.rating_key));
+                                }
                             });
 
+                            // fetch series meta (existing logic)
                             if (neededKeys.size > 0) {
                                 // Fetch in chunks or sequentially? Tautulli might rate limit.
                                 console.log(`[Import] Fetching metadata for ${neededKeys.size} new series...`);
@@ -374,6 +382,32 @@ export async function POST(request: Request) {
                                         }
                                     } catch (e) {
                                         console.warn(`Failed to fetch metadata for GP Key ${key}`, e);
+                                    }
+                                }
+                            }
+
+                            // fetch movie meta (new logic)
+                            if (neededMovieKeys.size > 0) {
+                                console.log(`[Import] Fetching metadata for ${neededMovieKeys.size} movies...`);
+                                for (const key of neededMovieKeys) {
+                                    try {
+                                        const metaRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_metadata&rating_key=${key}`);
+                                        if (metaRes.ok) {
+                                            const metaJson = await metaRes.json();
+                                            const d = metaJson.response?.data;
+                                            if (d) {
+                                                // console.log(`[Import] debug movie meta for ${key}:`, { guid: d.guid, imdb: d.imdb_id, tmdb: d.tmdb_id });
+                                                movieMetaCache.set(key, {
+                                                    guid: d.guid,
+                                                    imdb: d.imdb_id || d.imdb_id_s,
+                                                    tmdb: d.tmdb_id
+                                                });
+                                            } else {
+                                                movieMetaCache.set(key, {});
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.warn(`Failed to fetch metadata for Movie Key ${key}`, e);
                                     }
                                 }
                             }
@@ -469,13 +503,24 @@ export async function POST(request: Request) {
                                             if (sMeta) {
                                                 if (sMeta.year) compatibleEntry.grandparent_year = sMeta.year;
                                                 if (sMeta.guid) compatibleEntry.grandparent_guid = sMeta.guid;
-                                                // We could also enrich IDs if Tautulli row lacked them but metadata has them?
-                                                // Metadata usually has better IDs for the SERIES.
-                                                // But the entry is the EPISODE. We shouldn't put Series IDs on the Episode ID fields directly?
-                                                // Actually, `grandparent_guid` IS the Series ID (Plex GUID).
-                                                // We mapped `guids` in tautulli-mapper using `entry.guid` etc.
-                                                // `entry.grandparent_guid` is mapped to `meta.grandparentGuid`.
-                                                // This is correct.
+                                                // sMeta also has imdb/tmdb/tvdb for the SERIES
+                                                if (sMeta.tmdb) compatibleEntry.tmdb_id = sMeta.tmdb; // Tautulli entry usually lacks these
+                                                if (sMeta.imdb) compatibleEntry.imdb_id = sMeta.imdb;
+                                                if (sMeta.tvdb) compatibleEntry.tvdb_id = sMeta.tvdb;
+                                            }
+                                        }
+
+                                        // Apply cached Movie Metadata if available
+                                        if (row.media_type === 'movie' && row.rating_key) {
+                                            const mMeta = movieMetaCache.get(String(row.rating_key));
+                                            if (mMeta) {
+                                                if (mMeta.guid) compatibleEntry.plex_guid = mMeta.guid; // Use specific field to be safe
+                                                if (mMeta.imdb) compatibleEntry.imdb_id = mMeta.imdb;
+                                                if (mMeta.tmdb) compatibleEntry.tmdb_id = mMeta.tmdb;
+
+                                                if (mMeta.guid || mMeta.imdb || mMeta.tmdb) {
+                                                    // console.log(`[Import] Applied Movie Meta for ${row.title}:`, { guid: mMeta.guid, imdb: mMeta.imdb, tmdb: mMeta.tmdb });
+                                                }
                                             }
                                         }
 
@@ -497,6 +542,10 @@ export async function POST(request: Request) {
 
                                         // RESOLVE USER ID
                                         let resolvedUserId = userMap.get(`${String(targetId)}:${row.user}`);
+
+                                        if (mapped.type === 'episode' && mapped.plex_guid) {
+                                            // console.log(`[Import] Mapped Episode ${mapped.title} (S${mapped.parentIndex}E${mapped.index}) -> Plex GUID: ${mapped.plex_guid}`);
+                                        }
 
                                         // GHOST USER HANDLING: If not found, create them!
                                         if (!resolvedUserId && row.user_id) {

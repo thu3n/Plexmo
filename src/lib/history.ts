@@ -20,13 +20,19 @@ export type HistoryEntry = {
   pausedCounter: number;
   thumb?: string;
   parentThumb?: string;
+  plex_guid?: string;
+  imdb_id?: string;
+  tmdb_id?: string;
+  tvdb_id?: string;
 };
 
 const insertHistory = db.prepare(`
   INSERT INTO activity_history (
-    id, serverId, userId, user, title, subtitle, ratingKey, startTime, stopTime, duration, platform, device, ip, meta_json, pausedCounter
+    id, serverId, userId, user, title, subtitle, ratingKey, startTime, stopTime, duration, platform, device, ip, meta_json, pausedCounter,
+    plex_guid, imdb_id, tmdb_id, tvdb_id
   ) VALUES (
-    @id, @serverId, @userId, @user, @title, @subtitle, @ratingKey, @startTime, @stopTime, @duration, @platform, @device, @ip, @meta_json, @pausedCounter
+    @id, @serverId, @userId, @user, @title, @subtitle, @ratingKey, @startTime, @stopTime, @duration, @platform, @device, @ip, @meta_json, @pausedCounter,
+    @plex_guid, @imdb_id, @tmdb_id, @tvdb_id
   )
 ` as any);
 
@@ -123,6 +129,10 @@ export const syncHistory = (server: PlexServerConfig, currentSessions: PlexSessi
           ip: undefined,
           meta_json: existing.meta_json || undefined,
           pausedCounter: existing.pausedCounter,
+          plex_guid: null,
+          imdb_id: null,
+          tmdb_id: null,
+          tvdb_id: null
         };
         insertHistory.run(historyEntry);
         endedSessions.push(historyEntry);
@@ -239,6 +249,10 @@ export const syncHistory = (server: PlexServerConfig, currentSessions: PlexSessi
           meta_json: stored.meta_json || undefined,
           pausedCounter: stored.pausedCounter,
           // Add thumbs if we can recover them from meta_json or stored fields (not stored currently)
+          plex_guid: null,
+          imdb_id: null,
+          tmdb_id: null,
+          tvdb_id: null
         };
 
         insertHistory.run(historyEntry);
@@ -416,7 +430,13 @@ export const deleteHistory = (ids: string[]) => {
 };
 
 export const addHistoryEntry = (entry: HistoryEntry) => {
-  insertHistory.run(entry);
+  insertHistory.run({
+    ...entry,
+    plex_guid: entry.plex_guid ?? null,
+    imdb_id: entry.imdb_id ?? null,
+    tmdb_id: entry.tmdb_id ?? null,
+    tvdb_id: entry.tvdb_id ?? null
+  });
 };
 
 const deleteAll = db.prepare("DELETE FROM activity_history");

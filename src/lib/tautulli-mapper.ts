@@ -72,7 +72,9 @@ export type TautulliMetadataRow = {
 };
 
 // Combine all sources into one for mapping
-export type TautulliFullEntry = TautulliSessionRow & Partial<TautulliMediaInfoRow> & Partial<TautulliMetadataRow>;
+export type TautulliFullEntry = TautulliSessionRow & Partial<TautulliMediaInfoRow> & Partial<TautulliMetadataRow> & {
+    plex_guid?: string; // New explicit field we might populate
+};
 
 export function mapTautulliToPlexmo(
     entry: TautulliFullEntry,
@@ -227,6 +229,17 @@ export function mapTautulliToPlexmo(
         ip: entry.ip_address,
         serverName: "Tautulli Import", // Can be updated if we find name in server map
         meta_json: JSON.stringify(meta),
-        pausedCounter: finalPausedCounter // seconds
+        pausedCounter: finalPausedCounter, // seconds
+
+        // New ID Fields
+        // Logic Update: For Episodes, we want to link to the Show (Grandparent) in statistics, 
+        // which rely on joining plex_guid to UnifiedItem.guid. Unified Items are usually Shows.
+        plex_guid: (entry.media_type === 'episode' && (entry.grandparent_guid || entry.grandparentGuid))
+            ? (entry.grandparent_guid || entry.grandparentGuid)
+            : (entry.plex_guid || entry.guid),
+
+        imdb_id: entry.imdb_id,
+        tmdb_id: entry.tmdb_id,
+        tvdb_id: entry.tvdb_id
     };
 }

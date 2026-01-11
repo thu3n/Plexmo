@@ -37,20 +37,22 @@ export async function getPopularStats(
         SELECT 
             h.title, h.ratingKey, h.serverId, h.meta_json,
             h.subtitle, h.user, h.duration, h.startTime,
-            -- Show/Grandparent Info (via Episode -> Show Link)
+            
+            -- Show/Grandparent Info
             u_show.id as showUnifiedId,
             u_show.title as showUnifiedTitle,
             u_show.poster as showUnifiedPoster,
             u_show.year as showUnifiedYear,
             show.title as showTitleDb, 
             
-            -- Direct Item Info (Movies, or Episodes depending on perspective)
+            -- Direct Item Info
             u_direct.id as directUnifiedId,
             u_direct.title as directUnifiedTitle,
             u_direct.poster as directUnifiedPoster,
             u_direct.year as directUnifiedYear,
             u_direct.type as directUnifiedType,
             item.type as itemTypeDb,
+            
             COALESCE(
                 json_extract(h.meta_json, '$.thumb'),
                 json_extract(u_direct.meta_json, '$.parentThumb'), 
@@ -61,17 +63,28 @@ export async function getPopularStats(
 
         FROM activity_history h
         
-        -- Join to get Direct Item Metdata
+        -- 1. Join Legacy Item (so we can use it for fallback linking)
         LEFT JOIN library_items item ON (h.ratingKey = item.ratingKey AND h.serverId = item.serverId)
-        LEFT JOIN UnifiedItem u_direct ON (item.unifiedItemId = u_direct.id)
 
-        -- Join to get Grandparent/Show Metadata (For Episodes)
-        -- We try to join 'item' (which is the episode) to its parent 'show'
+        -- 2. Join UnifiedItem (Direct) - Now we can access 'item' safely
+        LEFT JOIN UnifiedItem u_direct ON (
+            (h.plex_guid IS NOT NULL AND h.plex_guid = u_direct.guid) OR
+            (h.imdb_id IS NOT NULL AND h.imdb_id = u_direct.imdb_id) OR
+            (h.tmdb_id IS NOT NULL AND h.tmdb_id = u_direct.tmdb_id) OR
+            (u_direct.id IS NULL AND h.title = u_direct.title) OR
+            (item.unifiedItemId = u_direct.id)
+        )
+
+        -- 3. Join Grandparent/Show (Legacy)
         LEFT JOIN library_items show ON (
             json_extract(item.meta_json, '$.grandparentRatingKey') = show.ratingKey 
             AND item.serverId = show.serverId
         )
-        LEFT JOIN UnifiedItem u_show ON (show.unifiedItemId = u_show.id)
+
+        -- 4. Join UnifiedItem (Show)
+        LEFT JOIN UnifiedItem u_show ON (
+            show.unifiedItemId = u_show.id
+        )
 
         WHERE h.startTime > ? 
         ORDER BY h.startTime DESC
