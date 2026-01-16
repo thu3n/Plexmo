@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { formatAudioChannels, formatCodec, formatVideoRes, getPlayerIcon, getSplitDisplayTitle, DetailBadge, HoverReveal, formatDateTime } from "./HistoryHelpers";
 import { X } from "lucide-react";
 import clsx from "clsx";
-import { useLanguage } from "./LanguageContext";
+import { useLanguage } from "@/components/LanguageContext";
 import Link from "next/link";
 
 export function HistoryModal({ entry, onClose, onOpenStats }: {

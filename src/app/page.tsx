@@ -1,113 +1,46 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
-import type { LibrarySection, PlexSession, SessionSummary } from "@/lib/plex";
-import { SessionCard } from "@/components/SessionCard";
+import { SessionCard } from "@/features/dashboard/components/SessionCard";
 import { SummaryCard } from "@/components/SummaryCard";
 import { getServerColor } from "@/lib/serverColors";
 import { useLanguage } from "@/components/LanguageContext";
 import { UserMenu } from "@/components/UserMenu";
-import type { PublicServer } from "@/lib/servers";
+import type { SessionSummary } from "@/lib/plex";
+import { useDashboardData } from "@/features/dashboard/hooks/useDashboardData";
+import { useRuleEnforcement } from "@/features/dashboard/hooks/useRuleEnforcement";
+import { useDashboardStatistics } from "@/features/dashboard/hooks/useDashboardStatistics";
 
-type DashboardResponse = {
-  sessions: PlexSession[];
-  summary: SessionSummary;
-  libraries: LibrarySection[];
-  updatedAt: string;
-  appName?: string;
-};
 
-type ServersResponse = {
-  servers: PublicServer[];
-};
 
-const fetchJson = async <T,>(url: string): Promise<T> => {
-  const response = await fetch(url, { cache: "no-store" });
 
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const parsed = await response.json();
-      detail = parsed?.error || "";
-    } catch {
-      detail = await response.text();
-    }
-    const message = detail || "Misslyckades att hämta data";
-    throw new Error(message);
-  }
-
-  return response.json() as Promise<T>;
-};
-
-const formatBandwidth = (value: number) => {
-  if (!value) return "0 Mbps";
-  const mbps = value / 1000;
-  return `${mbps.toFixed(1)} Mbps`;
-};
+const renderInteractiveTags = (data: Record<string, { name: string; count: number }>) => (
+  <div className="flex flex-wrap gap-2 mt-1">
+    {Object.entries(data).map(([id, stats]) => (
+      <div key={id} className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] font-medium text-white/70 whitespace-nowrap">
+        {stats.name}: <span className="text-amber-400 font-bold ml-1">{stats.count}</span>
+      </div>
+    ))}
+  </div>
+);
 
 export default function Home() {
   const { t } = useLanguage();
-  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+
   const [scrolled, setScrolled] = useState(false);
 
-  // Fetch rules for enforcement
-  const [maxStreamRule, setMaxStreamRule] = useState<{
-    value: number,
-    enabled: boolean,
-    enforce: boolean,
-    excludeSameIp: boolean
-  }>({ value: 0, enabled: false, enforce: false, excludeSameIp: false });
-  const [ruleUsers, setRuleUsers] = useState<Set<string>>(new Set());
+  // Hook 1: Data Fetching
+  const {
+    sessions: allSessions,
+    summary: serverSummary,
+    appName,
+    servers,
+    isLoading,
+    error,
+  } = useDashboardData();
 
-  useEffect(() => {
-    const fetchRules = async () => {
-      try {
-        const rulesRes = await fetch("/api/rules/instances");
-        if (rulesRes.ok) {
-          const rules = await rulesRes.json();
-          const limitRule = rules.find((r: any) => r.type === "max_concurrent_streams");
-
-          if (limitRule) {
-            setMaxStreamRule({
-              value: parseInt(limitRule.settings.limit, 10),
-              enabled: limitRule.enabled,
-              enforce: limitRule.settings.enforce,
-              excludeSameIp: limitRule.settings.exclude_same_ip || false
-            });
-
-            // Only fetch users if rule is enabled (or just always fetch to be safe)
-            // Note: Currently using hardcoded rule key for the users endpoint, likely need instance ID in future
-            // but the route /api/rules/max_concurrent_streams/users seems to rely on the type/key convention for now?
-            // Actually, Step 166 showed getUserRules/GlobalRules. 
-            // Let's assume the legacy endpoint might still work or I might need to adjust.
-            // But wait, the previous code used "max_concurrent_streams". 
-            // Let's check if that endpoint exists. 
-            // In Step 181, I saw `src/app/api/rules/[key]`. So likely `/api/rules/max_concurrent_streams/users` works.
-            const usersRes = await fetch(`/api/rules/${limitRule.id}/users`);
-            if (!usersRes.ok) {
-              // Fallback to legacy key if ID fails, or just try key first if that's how it was
-              // The old code used "max_concurrent_streams".
-              // I'll try the ID first as that is more robust with the new system. 
-              const legacyUsersRes = await fetch("/api/rules/max_concurrent_streams/users");
-              if (legacyUsersRes.ok) {
-                const users = await legacyUsersRes.json();
-                const enabledUsernames = new Set<string>(users.filter((u: any) => u.enabled).map((u: any) => u.username));
-                setRuleUsers(enabledUsernames);
-              }
-            } else {
-              const users = await usersRes.json();
-              const enabledUsernames = new Set<string>(users.filter((u: any) => u.enabled).map((u: any) => u.username));
-              setRuleUsers(enabledUsernames);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch rules", e);
-      }
-    };
-    fetchRules();
-  }, []);
+  // Hook 2: Rule Enforcement
+  const { ruleViolations } = useRuleEnforcement(allSessions);
 
   // Monitor scroll for header styling
   useEffect(() => {
@@ -118,195 +51,32 @@ export default function Home() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Hook 3: Statistics Aggregation
   const {
-    data: serversData,
-    error: serversError,
-    isLoading: serversLoading,
-  } = useSWR<ServersResponse>("/api/servers", fetchJson);
-
-  useEffect(() => {
-    // Redirect to setup if we have loaded servers but found none
-    if (!serversLoading && serversData && serversData.servers.length === 0) {
-      window.location.href = "/setup";
-    }
-  }, [serversLoading, serversData]);
-
-  const dashboardKey = "/api/dashboard";
-
-  const {
-    data,
-    error,
-    isLoading,
-  } = useSWR<DashboardResponse>(dashboardKey, fetchJson, {
-    refreshInterval: 5000,
-    revalidateOnFocus: false,
-  });
-
-  const allSessions = data?.sessions ?? [];
-  const appName = data?.appName;
-
-  // Filter sessions based on selection
-  const filteredSessions = useMemo(() => {
-    if (!selectedServerId) return allSessions;
-    return allSessions.filter(s => s.serverId === selectedServerId);
-  }, [allSessions, selectedServerId]);
-
-  // Recalculate summary based on filtered sessions
-  const summary = useMemo(() => {
-    if (!data) return {
-      active: 0,
-      directPlay: 0,
-      transcoding: 0,
-      paused: 0,
-      bandwidth: 0,
-    };
-
-    // If no filter, use server provided summary
-    if (!selectedServerId) return data.summary;
-
-    // Recalculate for filtered view
-    return filteredSessions.reduce((acc, session) => {
-      acc.active++;
-      acc.bandwidth += session.bandwidth || 0;
-
-      const isTranscode = session.decision?.toLowerCase() === "transcode";
-      const isPaused = session.state?.toLowerCase() === "paused";
-
-      if (isPaused) acc.paused++;
-      else if (isTranscode) acc.transcoding++;
-      else acc.directPlay++;
-
-      return acc;
-    }, {
-      active: 0,
-      directPlay: 0,
-      transcoding: 0,
-      paused: 0,
-      bandwidth: 0,
-      serverName: serversData?.servers.find(s => s.id === selectedServerId)?.name
-    } as SessionSummary);
-  }, [data, filteredSessions, selectedServerId, serversData]);
+    selectedServerId,
+    filteredSessions,
+    summary,
+    setSelectedServerId,
+    streamsPerServer,
+    directPlayPerServer,
+    transcodePerServer,
+    bandwidthPerServer
+  } = useDashboardStatistics(allSessions, serverSummary || null, servers);
 
   const activeServerName =
     selectedServerId
-      ? serversData?.servers.find((server) => server.id === selectedServerId)?.name ?? t("common.unknown") + " " + t("session.server")
+      ? servers.find((server) => server.id === selectedServerId)?.name ?? t("common.unknown") + " " + t("session.server")
       : t("dashboard.all") + " " + t("settings.servers").toLowerCase();
 
   const handleSelectServer = (id: string | null) => {
     setSelectedServerId(id);
   };
 
-  // Calculate violations
-  const userViolations = useMemo(() => {
-    // Only show badge if rule is enabled, limit is set, and NO acting configs (enforce/exclude) are active.
-    if (!maxStreamRule.enabled || maxStreamRule.value <= 0 || maxStreamRule.enforce || maxStreamRule.excludeSameIp) {
-      return new Set<string>();
-    }
-
-    const counts = new Map<string, number>();
-    // Count ALL active sessions per user (globally, not just filtered)
-    allSessions.forEach(s => {
-      const u = s.user;
-      counts.set(u, (counts.get(u) || 0) + 1);
-    });
-
-    const violators = new Set<string>();
-    counts.forEach((count, user) => {
-      // Check if user is subject to the rule
-      if (ruleUsers.has(user) && count > maxStreamRule.value) {
-        violators.add(user);
-      }
-    });
-
-    return violators;
-  }, [allSessions, maxStreamRule.enabled, maxStreamRule.value, maxStreamRule.enforce, maxStreamRule.excludeSameIp, ruleUsers]);
-
-  // Helper to render interactive tags
-  const renderInteractiveTags = (
-    data: Record<string, { name: string; count: number; label?: string }>,
-  ) => (
-    <div className="flex gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar items-center mask-linear-fade">
-      {Object.entries(data).map(([id, { name, count, label }]) => {
-        const serverObj = serversData?.servers.find((s) => s.id === id);
-        const color = getServerColor(id, serverObj?.color);
-        const isSelected = selectedServerId === id;
-
-        return (
-          <button
-            key={id}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleSelectServer(id === "unknown" ? null : id === selectedServerId ? null : id);
-            }}
-            className={`flex shrink-0 items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wide transition-all ${isSelected
-              ? "text-white ring-1 ring-white/30 shadow-sm"
-              : "text-white/60 hover:text-white hover:bg-white/5"
-              }`}
-            style={{
-              backgroundColor: isSelected ? color : `rgba(255,255,255,0.05)`,
-            }}
-          >
-            <span className="uppercase whitespace-nowrap opacity-70">{name}</span>
-            <span className="text-white whitespace-nowrap bg-white/10 px-1 rounded-sm">
-              {label || count}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  // Stats need to be calculated from ALL sessions to keep tags visible
-  const statsSource = allSessions;
-
-  // 1. Streams per Server
-  const streamsPerServer = statsSource.reduce((acc, session) => {
-    const id = session.serverId || "unknown";
-    const name = session.serverName || "Unknown";
-    if (!acc[id]) acc[id] = { name, count: 0 };
-    acc[id].count += 1;
-    return acc;
-  }, {} as Record<string, { name: string; count: number }>);
-
-  // 2. Direct Play per Server
-  const directPlayPerServer = statsSource.reduce((acc, session) => {
-    const isTranscode = session.decision?.toLowerCase() === "transcode";
-    if (!isTranscode) {
-      const id = session.serverId || "unknown";
-      const name = session.serverName || "Unknown";
-      if (!acc[id]) acc[id] = { name, count: 0 };
-      acc[id].count += 1;
-    }
-    return acc;
-  }, {} as Record<string, { name: string; count: number }>);
-
-  // 3. Transcode per Server
-  const transcodePerServer = statsSource.reduce((acc, session) => {
-    const isTranscode = session.decision?.toLowerCase() === "transcode";
-    if (isTranscode) {
-      const id = session.serverId || "unknown";
-      const name = session.serverName || "Unknown";
-      if (!acc[id]) acc[id] = { name, count: 0 };
-      acc[id].count += 1;
-    }
-    return acc;
-  }, {} as Record<string, { name: string; count: number }>);
-
-  // 4. Bandwidth per Server
-  const bandwidthPerServer = statsSource.reduce((acc, session) => {
-    const id = session.serverId || "unknown";
-    const name = session.serverName || "Unknown";
-    const bandwidth = session.bandwidth || 0;
-
-    if (!acc[id]) acc[id] = { name, count: 0 };
-    acc[id].count += bandwidth;
-    return acc;
-  }, {} as Record<string, { name: string; count: number; label?: string }>);
-
-  // Format bandwidth labels
-  Object.keys(bandwidthPerServer).forEach(id => {
-    bandwidthPerServer[id].label = formatBandwidth(bandwidthPerServer[id].count);
-  });
+  const formatBandwidth = (value: number) => {
+    if (!value) return "0 Mbps";
+    const mbps = value / 1000;
+    return `${mbps.toFixed(1)} Mbps`;
+  };
 
 
   return (
@@ -346,7 +116,7 @@ export default function Home() {
 
           <div className="flex items-center gap-2 sm:gap-4">
             {/* Server Filters - Desktop */}
-            {serversData?.servers && serversData.servers.length > 0 && (
+            {servers && servers.length > 0 && (
               <div className="hidden lg:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/5">
                 <button
                   onClick={() => handleSelectServer(null)}
@@ -357,7 +127,7 @@ export default function Home() {
                 >
                   {t("dashboard.all")}
                 </button>
-                {serversData.servers.map((server) => {
+                {servers.map((server) => {
                   const isActive = selectedServerId === server.id;
                   const color = getServerColor(server.id, server.color);
                   return (
@@ -387,7 +157,7 @@ export default function Home() {
       <main className="relative z-10 mx-auto max-w-[1600px] px-4 sm:px-6 pt-24 pb-20">
 
         {/* Mobile Server Filter (Below Header) */}
-        {serversData?.servers && serversData.servers.length > 0 && (
+        {servers && servers.length > 0 && (
           <div className="lg:hidden mb-6 flex overflow-x-auto pb-2 gap-2 no-scrollbar mask-linear-fade">
             <button
               onClick={() => handleSelectServer(null)}
@@ -398,7 +168,7 @@ export default function Home() {
             >
               {t("dashboard.all")}
             </button>
-            {serversData.servers.map((server) => {
+            {servers.map((server) => {
               const isActive = selectedServerId === server.id;
               const color = getServerColor(server.id, server.color);
               return (
@@ -520,9 +290,9 @@ export default function Home() {
             ) : null}
 
             {filteredSessions.map((session, i) => {
-              const serverObj = serversData?.servers.find(s => s.id === session.serverId);
+              const serverObj = servers.find(s => s.id === session.serverId);
               const color = getServerColor(session.serverId, serverObj?.color);
-              const isLimitExceeded = userViolations.has(session.user);
+              const isLimitExceeded = ruleViolations.has(session.user);
               return <SessionCard key={`${session.serverId}-${session.id}-${i}`} session={session} serverColor={color} isLimitExceeded={isLimitExceeded} />;
             })}
           </div>

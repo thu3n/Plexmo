@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { HistoryList } from "@/components/HistoryList";
+import { HistoryList } from "@/features/history/components/HistoryList";
 import Link from "next/link";
 import type { HistoryEntry } from "@/lib/history";
 import { Suspense, useState, useEffect } from "react";

@@ -1,5 +1,5 @@
 import type { PublicServer } from "@/lib/servers";
-import { useLanguage } from "./LanguageContext";
+import { useLanguage } from "@/components/LanguageContext";
 import { formatDate } from "@/lib/format";
 
 export const ServerCard = ({

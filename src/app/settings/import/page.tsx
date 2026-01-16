@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { SettingsSection, SettingsCard } from "../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { UploadCloud, Database, AlertTriangle, CheckCircle2, XCircle, Download, Server, ArrowRight, Loader2, HelpCircle } from "lucide-react";
 import clsx from "clsx";
 

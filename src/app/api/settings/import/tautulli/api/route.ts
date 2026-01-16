@@ -543,7 +543,7 @@ export async function POST(request: Request) {
                                         // RESOLVE USER ID
                                         let resolvedUserId = userMap.get(`${String(targetId)}:${row.user}`);
 
-                                        if (mapped.type === 'episode' && mapped.plex_guid) {
+                                        if (row.media_type === 'episode' && mapped.plex_guid) {
                                             // console.log(`[Import] Mapped Episode ${mapped.title} (S${mapped.parentIndex}E${mapped.index}) -> Plex GUID: ${mapped.plex_guid}`);
                                         }
 

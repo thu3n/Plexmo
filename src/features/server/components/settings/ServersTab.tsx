@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { SettingsSection, SettingsCard } from "../../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { useLanguage } from "@/components/LanguageContext";
 import { Plus, Trash2, Edit2, X } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";

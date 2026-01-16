@@ -129,10 +129,10 @@ export const syncHistory = (server: PlexServerConfig, currentSessions: PlexSessi
           ip: undefined,
           meta_json: existing.meta_json || undefined,
           pausedCounter: existing.pausedCounter,
-          plex_guid: null,
-          imdb_id: null,
-          tmdb_id: null,
-          tvdb_id: null
+          plex_guid: undefined,
+          imdb_id: undefined,
+          tmdb_id: undefined,
+          tvdb_id: undefined
         };
         insertHistory.run(historyEntry);
         endedSessions.push(historyEntry);
@@ -249,10 +249,10 @@ export const syncHistory = (server: PlexServerConfig, currentSessions: PlexSessi
           meta_json: stored.meta_json || undefined,
           pausedCounter: stored.pausedCounter,
           // Add thumbs if we can recover them from meta_json or stored fields (not stored currently)
-          plex_guid: null,
-          imdb_id: null,
-          tmdb_id: null,
-          tvdb_id: null
+          plex_guid: undefined,
+          imdb_id: undefined,
+          tmdb_id: undefined,
+          tvdb_id: undefined
         };
 
         insertHistory.run(historyEntry);

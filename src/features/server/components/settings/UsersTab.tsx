@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { SettingsSection, SettingsCard } from "../../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { useLanguage } from "@/components/LanguageContext";
 import { Search, ArrowUpDown, UserPlus, UserCheck, Shield } from "lucide-react";
 import type { PlexUser } from "@/lib/plex";

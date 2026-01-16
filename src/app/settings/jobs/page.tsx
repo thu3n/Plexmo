@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { SettingsSection, SettingsCard } from "../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { CronControl } from "./CronControl";
 import { useLanguage } from "@/components/LanguageContext";
 // Add ChevronLeft, ChevronRight

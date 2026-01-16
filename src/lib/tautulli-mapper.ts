@@ -234,8 +234,8 @@ export function mapTautulliToPlexmo(
         // New ID Fields
         // Logic Update: For Episodes, we want to link to the Show (Grandparent) in statistics, 
         // which rely on joining plex_guid to UnifiedItem.guid. Unified Items are usually Shows.
-        plex_guid: (entry.media_type === 'episode' && (entry.grandparent_guid || entry.grandparentGuid))
-            ? (entry.grandparent_guid || entry.grandparentGuid)
+        plex_guid: (entry.media_type === 'episode' && entry.grandparent_guid)
+            ? entry.grandparent_guid
             : (entry.plex_guid || entry.guid),
 
         imdb_id: entry.imdb_id,
