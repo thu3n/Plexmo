@@ -3,9 +3,9 @@
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLanguage } from "@/components/LanguageContext";
-import { ServersTab } from "./components/ServersTab";
-import { LibrariesTab } from "./components/LibrariesTab";
-import { UsersTab } from "./components/UsersTab";
+import { ServersTab } from "@/features/server/components/settings/ServersTab";
+import { LibrariesTab } from "@/features/server/components/settings/LibrariesTab";
+import { UsersTab } from "@/features/server/components/settings/UsersTab";
 import clsx from "clsx";
 
 function ServersContent() {

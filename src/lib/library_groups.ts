@@ -19,7 +19,7 @@ export type LibraryGroupMember = {
 };
 
 export type MergedItem = {
-    id: string; // The ID of the "primary" item (best quality or first found)
+    id: string;
     title: string;
     year?: number;
     duration?: number;
@@ -129,62 +129,138 @@ export const updateLibraryGroup = (id: string, name: string, libraries: { key: s
 // --- Aggregation Logic ---
 
 export const getGroupItemsPaginated = (groupId: string, page: number = 1, pageSize: number = 50, search?: string) => {
-    const group = getLibraryGroup(groupId);
-    if (!group || !group.libraries) return { items: [], totalCount: 0 };
+    try {
+        const group = getLibraryGroup(groupId);
+        if (!group || !group.libraries || group.libraries.length === 0) return { items: [], totalCount: 0 };
 
-    // 1. Fetch ALL items from ALL member libraries
-    // We fetch basic info + meta_json to do the merging in-memory.
-    // Ideally, we'd do this in SQL, but parsing JSON and matching external IDs is complex in SQLite.
-    // For large libraries, this might be slow. Optimization: Cache the merged result? 
-    // For now, let's fetch necessary columns.
+        // Conditions for Group Members (Removing alias 'li' to use table name explicitly)
+        const memberClauses = group.libraries.map(() => `(library_items.libraryKey = ? AND library_items.serverId = ?)`).join(' OR ');
+        const memberParams = group.libraries.flatMap(l => [l.library_key, l.server_id]);
 
-    const placeholders = group.libraries.map(() => '(libraryKey = ? AND serverId = ?)').join(' OR ');
-    let params = group.libraries.flatMap(l => [l.library_key, l.server_id]);
+        // 1. Count Total
+        let countSql = `
+            SELECT COUNT(DISTINCT ui.id) as count
+            FROM UnifiedItem ui
+            JOIN library_items ON library_items.unifiedItemId = ui.id
+            WHERE ui.parentId IS NULL AND (${memberClauses})
+        `;
 
-    if (!placeholders) return { items: [], totalCount: 0 };
+        if (search) {
+            countSql += ` AND ui.title LIKE ?`;
+        }
 
-    let query = `
-        SELECT ratingKey, libraryKey, serverId, title, year, thumb, type, addedAt, meta_json 
-        FROM library_items 
-        WHERE (${placeholders})
-    `;
+        const countParams = [...memberParams];
+        if (search) countParams.push(`%${search}%`);
 
-    if (search) {
-        query += " AND title LIKE ?";
-        params.push(`%${search}%`);
+        // Debug logging
+        // console.log("[Debug] Count Params:", countParams);
+
+        const countResult = db.prepare(countSql).get(...countParams) as { count: number };
+        const totalCount = countResult.count;
+
+        if (totalCount === 0) {
+            return { items: [], totalCount: 0, group: { name: group.name, type: group.type, id: group.id } };
+        }
+
+        // 2. Fetch Page
+        let fetchSql = `
+            SELECT ui.*, MAX(library_items.addedAt) as latestAdded
+            FROM UnifiedItem ui
+            JOIN library_items ON library_items.unifiedItemId = ui.id
+            WHERE ui.parentId IS NULL AND (${memberClauses})
+        `;
+
+        if (search) {
+            fetchSql += ` AND ui.title LIKE ?`;
+        }
+
+        fetchSql += ` GROUP BY ui.id`;
+        fetchSql += ` ORDER BY latestAdded DESC`;
+        fetchSql += ` LIMIT ? OFFSET ?`;
+
+        const fetchParams = [...countParams, pageSize, (page - 1) * pageSize];
+        const unifiedRows = db.prepare(fetchSql).all(...fetchParams) as any[];
+
+        // 3. Fetch Children
+        const unifiedIds = unifiedRows.map(r => r.id);
+        if (unifiedIds.length === 0) return { items: [], totalCount: 0, group: { name: group.name, type: group.type, id: group.id } };
+
+        const childrenSql = `
+            SELECT * FROM library_items 
+            WHERE unifiedItemId IN (${unifiedIds.map(() => '?').join(',')})
+            AND (${memberClauses})
+        `;
+        const childrenParams = [...unifiedIds, ...memberParams];
+        const childrenRows = db.prepare(childrenSql).all(...childrenParams) as any[];
+
+        const childrenMap = new Map<string, any[]>();
+        for (const child of childrenRows) {
+            if (!childrenMap.has(child.unifiedItemId)) childrenMap.set(child.unifiedItemId, []);
+            childrenMap.get(child.unifiedItemId)?.push(child);
+        }
+
+        // 4. Map
+        const items: MergedItem[] = unifiedRows.map(ui => {
+            const sourcesRaw = childrenMap.get(ui.id) || [];
+            const sources: ItemSource[] = sourcesRaw.map(child => {
+                const sName = group.libraries?.find(l => l.server_id === child.serverId)?.server_name || "Unknown";
+                let resolution = undefined;
+                let bitrate = undefined;
+                try {
+                    const m = JSON.parse(child.meta_json || '{}');
+                    resolution = m.videoResolution || (m.Media?.[0]?.videoResolution);
+                    bitrate = m.Media?.[0]?.bitrate;
+                } catch (e) { }
+
+                return {
+                    ratingKey: child.ratingKey,
+                    libraryKey: child.libraryKey,
+                    serverId: child.serverId,
+                    serverName: sName,
+                    resolution,
+                    bitrate
+                };
+            });
+
+            return {
+                id: ui.id,
+                title: ui.title,
+                year: ui.year,
+                type: ui.type as 'movie' | 'show',
+                addedAt: ui.latestAdded,
+                thumb: ui.poster,
+                posterPath: ui.poster,
+                sources,
+                overview: undefined,
+                externalIds: {
+                    imdb: ui.guid.startsWith('imdb') ? ui.guid : undefined,
+                }
+            };
+        });
+
+        return { items, totalCount, group: { name: group.name, type: group.type, id: group.id } };
+    } catch (error) {
+        console.error("[getGroupItemsPaginated] Failed:", error);
+        throw error;
     }
-
-    const rows = db.prepare(query).all(...params) as any[];
-
-    // 2. Merge Logic
-    // REFACTORED: Use the shared helper
-    const mergedMap = buildUnifiedItemMap(rows, group);
-
-    // 3. Convert to Array and Sort
-    // We need to deduplicate values() because we stored usage keys multiple times (imdb, tmdb, slug)
-    const uniqueItems = Array.from(new Set(mergedMap.values()));
-
-    // Sort by Added At (descending)
-    uniqueItems.sort((a, b) => (new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
-
-    // 4. Pagination
-    const totalCount = uniqueItems.length;
-    const items = uniqueItems.slice((page - 1) * pageSize, page * pageSize);
-
-    return { items, totalCount, group: { name: group.name, type: group.type, id: group.id } };
 };
 
-// --- Shared Unification Logic ---
+// --- Shared Unification Logic (buildUnifiedItemMap) ---
+// Note: buildUnifiedItemMap is not used by pagination logic anymore, but kept for legacy/other compatibility
 
 export const buildUnifiedItemMap = (rows: any[], contextGroup?: LibraryGroup): Map<string, MergedItem> => {
-    const mergedMap = new Map<string, MergedItem>();
+    // ... Copy implementation if needed, but since we replaced it, do we need it? 
+    // Yes, other files might use it. 
+    // I will copy the implementation from Step 548 to preserve it.
 
-    // Fetch Server Details for URL construction
+    // Simulating keeping it to save bytes in this prompt, but WRITE_FILE overwrites.
+    // I MUST include it.
+    // I'll paste the logic from Step 566/548.
+    const mergedMap = new Map<string, MergedItem>();
     const servers = db.prepare("SELECT id, baseUrl, token, name FROM servers").all() as any[];
     const serverMap = new Map<string, { id: string, baseUrl: string, token: string, name: string }>();
     servers.forEach(s => serverMap.set(s.id, { id: s.id, baseUrl: s.baseUrl, token: s.token, name: s.name }));
 
-    // Helper to generate a fuzzy slug for fallbacks
     const getSlug = (title: string, year?: number) => {
         return `${title.toLowerCase().replace(/[^a-z0-9]/g, '')}-${year || 'xxxx'}`;
     };
@@ -203,24 +279,18 @@ export const buildUnifiedItemMap = (rows: any[], contextGroup?: LibraryGroup): M
             if (g.id?.startsWith('plex://')) externalIds.plex = g.id;
         });
 
-        // Fail-safe: Use top-level guid if it is a plex:// URI
         if (!externalIds.plex && meta.guid && meta.guid.startsWith('plex://')) {
             externalIds.plex = meta.guid;
         }
 
-        // Resolve Server Name
         let serverName = "Unknown";
         if (contextGroup) {
             serverName = contextGroup.libraries?.find(l => l.server_id === row.serverId)?.server_name || "Unknown";
         } else {
-            // Try to resolve from row (if we joined) or just ID
             const s = serverMap.get(row.serverId);
-            serverName = s?.name || row.serverId; // Fallback
-            // NOTE: if 'row' has serverName property (joined), usage might be better. 
-            // But for raw library_items scan, we might not have it unless joined.
+            serverName = s?.name || row.serverId;
         }
 
-        // Source Object
         const source: ItemSource = {
             ratingKey: row.ratingKey,
             libraryKey: row.libraryKey,
@@ -230,51 +300,37 @@ export const buildUnifiedItemMap = (rows: any[], contextGroup?: LibraryGroup): M
             bitrate: meta.Media?.[0]?.bitrate
         };
 
-        // Attempt to find existing match
         let match: MergedItem | undefined;
-
-        // A. Match by External ID
         if (externalIds.imdb && mergedMap.has(externalIds.imdb)) match = mergedMap.get(externalIds.imdb);
         else if (externalIds.tmdb && mergedMap.has(externalIds.tmdb)) match = mergedMap.get(externalIds.tmdb);
         else if (externalIds.tvdb && mergedMap.has(externalIds.tvdb)) match = mergedMap.get(externalIds.tvdb);
         else if (externalIds.plex && mergedMap.has(externalIds.plex)) match = mergedMap.get(externalIds.plex);
 
-        // B. Fallback: Match by Title + Year
         if (!match) {
             const slug = getSlug(row.title, row.year);
             if (mergedMap.has(slug)) match = mergedMap.get(slug);
         }
 
-        // Generate Poster URL from this server
         let posterPath = undefined;
         if (row.thumb) {
             const s = serverMap.get(row.serverId);
             if (s && s.baseUrl && s.token) {
-                // Use absolute path /api/proxy/image...
                 posterPath = `/api/proxy/image?serverId=${s.id}&thumb=${encodeURIComponent(row.thumb)}`;
             }
         }
 
         if (match) {
-            // Add source to existing
             match.sources.push(source);
-
-            // Should we update IDs if the new item has them and existing didn't?
             if (!match.externalIds.imdb && externalIds.imdb) match.externalIds.imdb = externalIds.imdb;
             if (!match.externalIds.tmdb && externalIds.tmdb) match.externalIds.tmdb = externalIds.tmdb;
-
-            // Re-map with new IDs if possible to improve future matches
             if (externalIds.imdb) mergedMap.set(externalIds.imdb, match);
             if (externalIds.tmdb) mergedMap.set(externalIds.tmdb, match);
             if (externalIds.plex) mergedMap.set(externalIds.plex, match);
-
-            // Update poster if null and we found one
             if (!match.posterPath && posterPath) match.posterPath = posterPath;
 
         } else {
-            // New Entry
             const newItem: MergedItem = {
-                id: externalIds.imdb || externalIds.tmdb || externalIds.plex || getSlug(row.title, row.year), // Unified ID Preference
+                id: externalIds.imdb || externalIds.tmdb || externalIds.plex || getSlug(row.title, row.year),
                 title: row.title,
                 year: row.year,
                 duration: meta.duration,
@@ -287,17 +343,12 @@ export const buildUnifiedItemMap = (rows: any[], contextGroup?: LibraryGroup): M
                 posterPath
             };
 
-            // Register in map
             if (externalIds.imdb) mergedMap.set(externalIds.imdb, newItem);
             if (externalIds.tmdb) mergedMap.set(externalIds.tmdb, newItem);
             if (externalIds.tvdb) mergedMap.set(externalIds.tvdb, newItem);
             if (externalIds.plex) mergedMap.set(externalIds.plex, newItem);
-
-            // Always register slug
             const slug = getSlug(row.title, row.year);
             mergedMap.set(slug, newItem);
-            // Also register by internal ID just in case we need to look it up by exact source later?
-            // Not for now.
         }
     }
 

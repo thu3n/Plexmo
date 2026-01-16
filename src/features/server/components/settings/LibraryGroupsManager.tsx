@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import useSWR from "swr";
 import { Plus, Trash2, Edit2, Check, X, Layers, Eye, RefreshCw } from "lucide-react";
-import { SettingsCard } from "../../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import clsx from "clsx";
 import type { LibrarySection } from "@/lib/plex";
 import type { LibraryGroup } from "@/lib/library_groups";

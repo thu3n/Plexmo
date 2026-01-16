@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { useRouter } from "next/navigation";
-import { Activity, Tv, X, ArrowLeft, Users, Play, Clock, User, Flame } from "lucide-react";
+import { Activity, Tv, X, ArrowLeft, Users, Play, Clock, User, Flame, ChevronDown } from "lucide-react";
 import { useLanguage } from "@/components/LanguageContext";
 import { UserMenu } from "@/components/UserMenu";
 import { formatDate, formatDateTime, formatTime } from "@/lib/format";
@@ -26,6 +26,55 @@ const SkeletonCard = () => (
         </div>
     </div>
 );
+
+const UserHistoryRow = ({ user }: { user: any }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+        <div className="bg-white/5 rounded-lg border border-white/5 overflow-hidden transition-all duration-200">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex items-center gap-3 p-3 hover:bg-white/5 transition-colors text-left"
+            >
+                <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+                    <span className="text-xs font-bold text-white/50">
+                        {user.user.substring(0, 2).toUpperCase()}
+                    </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-white truncate">{user.user}</p>
+                    <p className="text-xs text-gray-500">
+                        {user.playCount} plays {user.playCount > 1 ? '(Total)' : ''}
+                    </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-xs text-amber-400 text-right">
+                        Last: {formatDate(user.lastWatched)}
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                </div>
+            </button>
+
+            {/* Detailed Plays List */}
+            {isOpen && user.plays && user.plays.length > 0 && (
+                <div className="bg-black/20 border-t border-white/5">
+                    <div className="p-3 space-y-1">
+                        {user.plays.map((play: any, idx: number) => (
+                            <div key={idx} className="text-xs flex justify-between items-center group/play py-1 px-2 rounded hover:bg-white/5 transition-colors">
+                                <div className="truncate text-gray-400 group-hover/play:text-gray-300 flex-1 pr-4">
+                                    {play.title}
+                                </div>
+                                <div className="text-[10px] text-gray-600 group-hover/play:text-gray-500 shrink-0 tabular-nums">
+                                    {formatDateTime(play.date)}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export default function StatisticsPage() {
     const { t } = useLanguage();
@@ -104,9 +153,9 @@ export default function StatisticsPage() {
         fetcher
     );
 
-    const { data: itemUsers } = useSWR<{ users: any[] }>(
+    const { data: itemUsers } = useSWR<{ users: any[], files: any[] }>(
         selectedItem
-            ? `/api/statistics/items?ratingKey=${selectedItem.ratingKey}&serverId=${selectedItem.serverId}&range=${selectedItem.source === 'most_watched' ? mostWatchedRange : popularRange}&type=${(selectedItem.source === 'most_watched' ? activeMostWatchedTab : activeTab) === 'shows' ? 'show' : ''}&sort=${selectedItem.source === 'most_watched' ? 'total_plays' : 'unique_users'}`
+            ? `/api/statistics/items?ratingKey=${selectedItem.ratingKey}&serverId=${selectedItem.serverId}&range=${selectedItem.source === 'most_watched' ? mostWatchedRange : popularRange}&type=${(selectedItem.source === 'most_watched' ? activeMostWatchedTab : activeTab) === 'shows' ? 'show' : ''}&sort=${selectedItem.source === 'most_watched' ? 'total_plays' : 'unique_users'}&unifiedItemId=${selectedItem.ratingKey.startsWith('uni_') ? selectedItem.ratingKey : ''}`
             : null,
         fetcher
     );
@@ -747,44 +796,35 @@ export default function StatisticsPage() {
                             ) : itemUsers?.users?.length === 0 ? (
                                 <div className="text-center py-8 text-gray-500">No users found.</div>
                             ) : (
-                                <div className="space-y-3">
-                                    {itemUsers?.users?.map((user: any, i: number) => (
-                                        <div key={i} className="bg-white/5 p-3 rounded-lg border border-white/5">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
-                                                    <span className="text-xs font-bold text-white/50">
-                                                        {user.user.substring(0, 2).toUpperCase()}
-                                                    </span>
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-sm font-medium text-white truncate">{user.user}</p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {user.playCount} plays {user.playCount > 1 ? '(Total)' : ''}
-                                                    </p>
-                                                </div>
-                                                <div className="text-xs text-amber-400 shrink-0 text-right">
-                                                    Last: {formatDate(user.lastWatched)}
-                                                </div>
-                                            </div>
-
-                                            {/* Detailed Plays List */}
-                                            {user.plays && user.plays.length > 0 && (
-                                                <div className="mt-2 space-y-1 pl-11 border-l-2 border-white/5 ml-4">
-                                                    {user.plays.map((play: any, idx: number) => (
-                                                        <div key={idx} className="text-xs flex justify-between items-center group/play py-0.5">
-                                                            <div className="truncate text-gray-400 group-hover/play:text-gray-300">
-                                                                {play.title}
-                                                            </div>
-                                                            <div className="flex gap-2 text-[10px] text-gray-600">
-                                                                <span>{play.percent}%</span>
-                                                                <span>{formatDate(play.date)}</span>
-                                                            </div>
+                                <div className="space-y-4">
+                                    {/* Version/File Info */}
+                                    {itemUsers.files && itemUsers.files.length > 0 && (
+                                        <div className="bg-white/5 p-3 rounded-lg border border-white/5">
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Available Versions</h4>
+                                            <div className="space-y-2">
+                                                {itemUsers.files.map((file, idx) => (
+                                                    <div key={idx} className="flex items-center justify-between text-xs text-gray-300">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-medium text-amber-500">{file.serverName}</span>
+                                                            <span className="text-gray-500">•</span>
+                                                            <span>{file.fileName}</span>
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            )}
+                                                        <div className="flex items-center gap-2 bg-black/20 px-2 py-1 rounded">
+                                                            <span className="font-mono text-xs">{file.resolution}</span>
+                                                            <span className="text-gray-500">|</span>
+                                                            <span className="text-gray-400">{file.quality}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
+
+                                    <div className="space-y-3">
+                                        {itemUsers?.users?.map((user: any, i: number) => (
+                                            <UserHistoryRow key={i} user={user} />
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>

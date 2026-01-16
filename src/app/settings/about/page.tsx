@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SettingsSection, SettingsCard } from "../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { useLanguage } from "@/components/LanguageContext";
 import { Github, ExternalLink, Package, Calendar, Code } from "lucide-react";
 

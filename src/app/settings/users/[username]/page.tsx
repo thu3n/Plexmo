@@ -5,7 +5,8 @@ import Link from "next/link";
 import useSWR from "swr";
 import type { UserStats } from "@/lib/user_stats";
 import type { HistoryEntry } from "@/lib/history";
-import { HistoryModal } from "@/components/HistoryModal";
+import { HistoryModal } from "@/features/history/components/HistoryModal";
+import { RuleHistoryModal } from "@/features/rules/components/RuleHistoryModal";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatDate } from "@/lib/format";
 
@@ -381,7 +382,7 @@ export default function UserStatsPage({ params }: { params: Promise<{ username: 
     );
 }
 
-import { RuleHistoryModal } from "@/components/RuleHistoryModal";
+
 
 // ... existing imports
 

@@ -1,6 +1,6 @@
 import { Edit2, ShieldAlert, Trash2, Power, Bell, Globe, Users, Server, MonitorPlay, PauseCircle, Clock, Play, Square, CalendarClock, LucideIcon } from "lucide-react";
 import { clsx } from "clsx";
-import { SettingsCard } from "../../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 
 interface RuleInstance {
     id: string;

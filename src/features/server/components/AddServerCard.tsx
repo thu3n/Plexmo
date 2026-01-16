@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { useLanguage } from './LanguageContext';
+import { useLanguage } from '@/components/LanguageContext';
 
 interface AddServerCardProps {
     onClick: () => void;

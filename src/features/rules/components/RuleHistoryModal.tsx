@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import clsx from 'clsx';
-import { X } from 'lucide-react';
-import { useLanguage } from './LanguageContext';
+import { formatDateTime } from "@/features/history/components/HistoryHelpers";
+import { X, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import clsx from "clsx";
+import { useLanguage } from "@/components/LanguageContext";
 
 interface RuleEvent {
     id: number;

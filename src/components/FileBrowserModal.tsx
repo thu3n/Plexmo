@@ -1,17 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useFileBrowser } from "@/features/server/hooks/useFileBrowser";
 
 type FileItem = {
     name: string;
     type: "directory" | "file";
     path: string;
-};
-
-type FileResponse = {
-    currentPath: string;
-    parent: string | null;
-    items: FileItem[];
 };
 
 interface FileBrowserModalProps {
@@ -22,32 +16,14 @@ interface FileBrowserModalProps {
 }
 
 export function FileBrowserModal({ isOpen, onClose, onSelect, initialPath }: FileBrowserModalProps) {
-    const [currentPath, setCurrentPath] = useState(initialPath || "");
-    const [data, setData] = useState<FileResponse | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-
-    useEffect(() => {
-        if (isOpen) {
-            fetchPath(initialPath || "");
-        }
-    }, [isOpen]);
-
-    const fetchPath = async (path: string) => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await fetch(`/api/filesystem?path=${encodeURIComponent(path)}`);
-            if (!res.ok) throw new Error("Failed to load directory");
-            const json = await res.json();
-            setData(json);
-            setCurrentPath(json.currentPath);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const {
+        currentPath,
+        data,
+        loading,
+        error,
+        navigateUp,
+        navigateTo
+    } = useFileBrowser(initialPath, isOpen);
 
     if (!isOpen) return null;
 
@@ -79,7 +55,7 @@ export function FileBrowserModal({ isOpen, onClose, onSelect, initialPath }: Fil
                         <div className="mt-1 space-y-1">
                             {data?.parent && (
                                 <button
-                                    onClick={() => fetchPath(data.parent!)}
+                                    onClick={navigateUp}
                                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-white hover:bg-white/10"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 text-indigo-400">
@@ -93,7 +69,7 @@ export function FileBrowserModal({ isOpen, onClose, onSelect, initialPath }: Fil
                                     key={item.name}
                                     onClick={() => {
                                         if (item.type === "directory") {
-                                            fetchPath(item.path);
+                                            navigateTo(item.path);
                                         } else {
                                             onSelect(item.path);
                                             onClose();

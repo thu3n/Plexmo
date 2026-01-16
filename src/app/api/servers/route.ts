@@ -1,4 +1,5 @@
 import { createServer, listAllServers } from "@/lib/servers";
+import { normalizePlexUrl } from "@/lib/plex";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -15,7 +16,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const baseUrl = String(body.baseUrl || "").trim();
+    const rawUrl = String(body.baseUrl || "").trim();
+    const baseUrl = normalizePlexUrl(rawUrl);
     const token = String(body.token || "").trim();
     const name = body.name ? String(body.name).trim() : undefined;
     const color = body.color ? String(body.color).trim() : undefined;
