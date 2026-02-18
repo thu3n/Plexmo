@@ -210,61 +210,11 @@ export async function runCronJob() {
             console.error("[Cron] Failed to process scheduled library sync:", e);
         }
 
-        // --- Scheduled Job: Reconcile Statistics ---
-        try {
-            const reconcileEnabled = getSetting("job_reconcile_stats_enabled") !== "false";
-            const reconcileSchedule = getSetting("job_reconcile_stats_cron") || "0 5 * * *"; // Default 5 AM
+        // --- Scheduled Job: Reconcile Statistics (REMOVED) ---
+        // Legacy code removed.
 
-            if (reconcileEnabled) {
-                if (!parseExpression) throw new Error("Could not resolve cron-parser parseExpression");
-                const interval = parseExpression(reconcileSchedule);
-                const prevRunDate = interval.prev().toDate();
 
-                const lastRunTimestamp = getSetting("job_reconcile_stats_last_run");
-                const lastRunDate = lastRunTimestamp ? new Date(parseInt(lastRunTimestamp)) : new Date(0);
 
-                if (prevRunDate.getTime() > lastRunDate.getTime()) {
-                    console.log(`[Cron] Triggering Scheduled Statistics Reconciliation (Schedule: ${reconcileSchedule}, Last Run: ${lastRunDate.toISOString()})`);
-
-                    setSetting("job_reconcile_stats_last_run", Date.now().toString());
-
-                    // Dynamic import
-                    const { reconcileStatistics } = await import("@/lib/cron_reconcile_stats");
-
-                    // Run async
-                    reconcileStatistics().catch(err => {
-                        console.error("[Cron] Scheduled reconciliation failed:", err);
-                    });
-                }
-            }
-        } catch (e) {
-            console.error("[Cron] Failed to process scheduled reconciliation:", e);
-        }
-
-        // --- Scheduled Job: Unify Library Items (Master Data) ---
-        try {
-            const unifyEnabled = getSetting("job_unify_library_enabled") !== "false";
-            const unifySchedule = getSetting("job_unify_library_cron") || "0 4 * * *"; // Default 4 AM
-
-            if (unifyEnabled) {
-                if (!parseExpression) throw new Error("Could not resolve cron-parser parseExpression");
-                const interval = parseExpression(unifySchedule);
-                const prevRunDate = interval.prev().toDate();
-
-                const lastRunTimestamp = getSetting("job_unify_library_last_run");
-                const lastRunDate = lastRunTimestamp ? new Date(parseInt(lastRunTimestamp)) : new Date(0);
-
-                if (prevRunDate.getTime() > lastRunDate.getTime()) {
-                    console.log(`[Cron] Triggering Scheduled Unification (Schedule: ${unifySchedule}, Last Run: ${lastRunDate.toISOString()})`);
-                    setSetting("job_unify_library_last_run", Date.now().toString());
-
-                    const { unifyLibraryItems } = await import("@/lib/services/unification_service");
-                    unifyLibraryItems().catch(err => console.error("[Cron] Unification failed:", err));
-                }
-            }
-        } catch (e) {
-            console.error("[Cron] Failed to process unification:", e);
-        }
 
         return {
             success: true,

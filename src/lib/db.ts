@@ -94,7 +94,8 @@ try {
       plex_guid TEXT,
       imdb_id TEXT,
       tmdb_id TEXT,
-      tvdb_id TEXT
+      tvdb_id TEXT,
+      repair_status TEXT
     );
 
     CREATE TABLE IF NOT EXISTS active_sessions (
@@ -234,21 +235,7 @@ try {
       timestamp INTEGER NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS library_groups (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      createdAt TEXT NOT NULL
-    );
 
-    CREATE TABLE IF NOT EXISTS library_group_members (
-      group_id TEXT NOT NULL,
-      library_key TEXT NOT NULL,
-      server_id TEXT NOT NULL,
-      server_name TEXT,
-      PRIMARY KEY (group_id, library_key, server_id),
-      FOREIGN KEY (group_id) REFERENCES library_groups(id) ON DELETE CASCADE
-    );
 
     CREATE TABLE IF NOT EXISTS external_metadata (
         id TEXT PRIMARY KEY,
@@ -267,20 +254,8 @@ try {
       updatedAt INTEGER NOT NULL
     );
 
-    --// Unified Statistics Table
-    CREATE TABLE IF NOT EXISTS media_statistics (
-      id TEXT PRIMARY KEY, -- Unified GUID
-      title TEXT NOT NULL,
-      year INTEGER,
-      poster TEXT,
-      type TEXT,
-      totalPlays INTEGER DEFAULT 0,
-      uniqueUsers INTEGER DEFAULT 0,
-      totalDuration INTEGER DEFAULT 0,
-      firstSeen TEXT NOT NULL,
-      lastSeen TEXT NOT NULL,
-      meta_json TEXT
-    );
+    -- Table media_statistics removed.
+
 
     -- INDEXES FOR PERFORMANCE
     CREATE INDEX IF NOT EXISTS idx_history_dup_check ON activity_history(user, ratingKey, startTime);
@@ -321,6 +296,11 @@ try {
   try { db.prepare("ALTER TABLE activity_history ADD COLUMN imdb_id TEXT").run(); } catch (e) { }
   try { db.prepare("ALTER TABLE activity_history ADD COLUMN tmdb_id TEXT").run(); } catch (e) { }
   try { db.prepare("ALTER TABLE activity_history ADD COLUMN tvdb_id TEXT").run(); } catch (e) { }
+
+  // Migration: Add repair_status to activity_history
+  try { db.prepare("ALTER TABLE activity_history ADD COLUMN repair_status TEXT").run(); } catch (e) { }
+
+
 
 
   // Migration: Add meta_json to active_sessions
@@ -414,58 +394,10 @@ try {
     console.error("[Migration] Failed to backfill userIds:", e);
   }
 
-  // Migration: Add uniqueUsers to media_statistics
-  try {
-    db.prepare("ALTER TABLE media_statistics ADD COLUMN uniqueUsers INTEGER DEFAULT 0").run();
-  } catch (e: any) { }
+  // Migration for media_statistics removed.
 
-  // Migration: UnifiedItem Table (Ensure it exists)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS UnifiedItem (
-      id TEXT PRIMARY KEY,
-      guid TEXT UNIQUE NOT NULL,
-      title TEXT NOT NULL,
-      year INTEGER,
-      poster TEXT,
-      type TEXT,
-      parentId TEXT,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (parentId) REFERENCES UnifiedItem(id) ON DELETE SET NULL
-    );
-  `);
 
-  // Migration: Add parentId to UnifiedItem if missing
-  try {
-    db.prepare("ALTER TABLE UnifiedItem ADD COLUMN parentId TEXT").run();
-  } catch (e) { }
 
-  // Migration: Add unifiedItemId to library_items if missing
-  try {
-    db.prepare("ALTER TABLE library_items ADD COLUMN unifiedItemId TEXT").run();
-  } catch (e) { }
-
-  // Migration: Add meta_json to UnifiedItem
-  try {
-    db.prepare("ALTER TABLE UnifiedItem ADD COLUMN meta_json TEXT").run();
-  } catch (e) { }
-
-  // Index extraction for performance
-  try {
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_meta_parent ON UnifiedItem(json_extract(meta_json, '$.parentThumb'))").run();
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_meta_grandparent ON UnifiedItem(json_extract(meta_json, '$.grandparentThumb'))").run();
-  } catch (e) { }
-
-  // Migration: Add ID columns to UnifiedItem
-  try { db.prepare("ALTER TABLE UnifiedItem ADD COLUMN imdb_id TEXT").run(); } catch (e) { }
-  try { db.prepare("ALTER TABLE UnifiedItem ADD COLUMN tmdb_id TEXT").run(); } catch (e) { }
-  try { db.prepare("ALTER TABLE UnifiedItem ADD COLUMN tvdb_id TEXT").run(); } catch (e) { }
-
-  // Indexes for UnifiedItem IDs
-  try {
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_imdb ON UnifiedItem(imdb_id)").run();
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_unified_tmdb ON UnifiedItem(tmdb_id)").run();
-  } catch (e) { }
 
 
 
@@ -490,6 +422,7 @@ try {
 } catch (error) {
   console.error("CRITICAL: FAILED TO INITIALIZE DATABASE.");
   console.error(error);
+
   console.error("The application will start in recovery mode. Please check file permissions.");
 
   // Mock DB to prevent crash at startup (e.g. when servers.ts calls prepare())

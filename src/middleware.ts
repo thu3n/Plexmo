@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
         "/setup",
         "/api/setup/status",
         "/api/history",     // Hybrid Auth (Session or API Key)
-        "/api/statistics",  // Hybrid Auth
+
         "/api/stats",       // Hybrid Auth
     ];
 

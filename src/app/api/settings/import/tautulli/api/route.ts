@@ -344,7 +344,7 @@ export async function POST(request: Request) {
 
 
                             // --- PRE-FETCH SERIES METADATA (For linking Episodes to Series correctly) ---
-                            // AND MOVIES METADATA (For linking Movies to UnifiedItems)
+                            // AND MOVIES METADATA
                             const neededKeys = new Set<string>();
                             const neededMovieKeys = new Set<string>();
 

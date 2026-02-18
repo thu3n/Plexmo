@@ -418,7 +418,6 @@ export const getLibraryItems = async (libraryKey: string, serverId: string) => {
         SELECT * FROM library_items 
         WHERE libraryKey = ? AND serverId = ? 
         ORDER BY title ASC
-        ORDER BY title ASC
     `).all(libraryKey, serverId);
 };
 
