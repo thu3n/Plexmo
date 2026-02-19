@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
+import { Logger } from "./logger";
 
 const resolveDbPath = () => {
   // 1. Explicit override
@@ -34,23 +35,24 @@ const resolveDbPath = () => {
 };
 
 const dbPath = resolveDbPath();
-console.log(`[DB] Resolved Database Path: ${dbPath}`);
+Logger.info(`[DB] Resolved Database Path: ${dbPath}`);
 
 
 // Interface matching better-sqlite3 parts we use
 interface DBInterface {
   pragma: (str: string) => void;
   exec: (str: string) => void;
-  prepare: <T = any[], R = any>(sql: string) => StatementInterface<T, R>;
+  prepare: <T = unknown[], R = unknown>(sql: string) => StatementInterface<T, R>;
+  transaction?: <F extends (...args: any[]) => any>(fn: F) => F; // Optional for mock
 }
 
 interface StatementInterface<T, R> {
-  get: (...params: any[]) => R | undefined;
-  all: (...params: any[]) => R[];
-  run: (...params: any[]) => { changes: number; lastInsertRowid: number | bigint };
+  get: (...params: unknown[]) => R | undefined;
+  all: (...params: unknown[]) => R[];
+  run: (...params: unknown[]) => { changes: number; lastInsertRowid: number | bigint };
 }
 
-let dbInstance: any;
+let dbInstance: Database.Database | DBInterface;
 
 try {
   const db = new Database(dbPath);
@@ -60,7 +62,7 @@ try {
     db.pragma("journal_mode = WAL");
   } else {
     // Force checkpoint to flush any existing WAL data before switching
-    try { db.pragma("wal_checkpoint(RESTART)"); } catch (e) { }
+    try { db.pragma("wal_checkpoint(RESTART)"); } catch (e) { /* ignore */ }
     db.pragma("journal_mode = DELETE");
   }
 
@@ -273,23 +275,23 @@ try {
   // Checks for migration: add color column if missing
   try {
     db.prepare("ALTER TABLE servers ADD COLUMN color TEXT").run();
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Column likely already exists
   }
 
   // Migration: allowed_users new columns
   try {
     db.prepare("ALTER TABLE allowed_users ADD COLUMN removeAfterLogin INTEGER DEFAULT 1").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   try {
     db.prepare("ALTER TABLE allowed_users ADD COLUMN expiresAt TEXT").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add meta_json to activity_history
   try {
     db.prepare("ALTER TABLE activity_history ADD COLUMN meta_json TEXT").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add new ID columns to activity_history
   try { db.prepare("ALTER TABLE activity_history ADD COLUMN plex_guid TEXT").run(); } catch (e) { }
@@ -306,72 +308,73 @@ try {
   // Migration: Add meta_json to active_sessions
   try {
     db.prepare("ALTER TABLE active_sessions ADD COLUMN meta_json TEXT").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add pausedCounter to activity_history
   try {
     db.prepare("ALTER TABLE activity_history ADD COLUMN pausedCounter INTEGER DEFAULT 0").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add pausedCounter to active_sessions
   try {
     db.prepare("ALTER TABLE active_sessions ADD COLUMN pausedCounter INTEGER DEFAULT 0").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add pausedSince to active_sessions (For Kill Paused Stream Rule)
   try {
     db.prepare("ALTER TABLE active_sessions ADD COLUMN pausedSince INTEGER").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add isAdmin to users
   try {
     db.prepare("ALTER TABLE users ADD COLUMN isAdmin INTEGER DEFAULT 0").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add title to users
   try {
     db.prepare("ALTER TABLE users ADD COLUMN title TEXT").run();
     // Default title to username if empty
     db.prepare("UPDATE users SET title = username WHERE title IS NULL").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add endedAt to rule_events
   try {
     db.prepare("ALTER TABLE rule_events ADD COLUMN endedAt TEXT").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add discordWebhookIds to rule_instances and migrate data
   try {
     db.prepare("ALTER TABLE rule_instances ADD COLUMN discordWebhookIds TEXT").run();
     // Migrate existing single ID to array
-    const rules = db.prepare("SELECT id, discordWebhookId FROM rule_instances WHERE discordWebhookId IS NOT NULL").all() as any[];
+    type RuleWithWebhook = { id: string; discordWebhookId: string | null };
+    const rules = db.prepare("SELECT id, discordWebhookId FROM rule_instances WHERE discordWebhookId IS NOT NULL").all() as RuleWithWebhook[];
     const updateStmt = db.prepare("UPDATE rule_instances SET discordWebhookIds = ? WHERE id = ?");
     for (const rule of rules) {
       if (rule.discordWebhookId) {
         updateStmt.run(JSON.stringify([rule.discordWebhookId]), rule.id);
       }
     }
-    console.log("[Migration] Migrated rule webhooks to multi-select format");
-  } catch (e: any) {
+    Logger.info("[Migration] Migrated rule webhooks to multi-select format");
+  } catch (e: unknown) {
     // Column likely exists
   }
 
   // Migration: Add userId to activity_history
   try {
     db.prepare("ALTER TABLE activity_history ADD COLUMN userId TEXT").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Add userId to active_sessions
   try {
     db.prepare("ALTER TABLE active_sessions ADD COLUMN userId TEXT").run();
-  } catch (e: any) { }
+  } catch (e: unknown) { }
 
   // Migration: Backfill userId for activity_history
   try {
     // Check if we have null userIds
-    const check = db.prepare("SELECT count(*) as count FROM activity_history WHERE userId IS NULL").get() as any;
+    const check = db.prepare("SELECT count(*) as count FROM activity_history WHERE userId IS NULL").get() as { count: number };
     if (check.count > 0) {
-      console.log("[Migration] Backfilling userIds for activity_history...");
+      Logger.info("[Migration] Backfilling userIds for activity_history...");
       // Try match by username first, then title
 
       // 1. Update where user matches username (exact match)
@@ -388,10 +391,10 @@ try {
         WHERE userId IS NULL
       `).run();
 
-      console.log("[Migration] Backfill complete.");
+      Logger.info("[Migration] Backfill complete.");
     }
-  } catch (e: any) {
-    console.error("[Migration] Failed to backfill userIds:", e);
+  } catch (e: unknown) {
+    Logger.error("[Migration] Failed to backfill userIds:", e);
   }
 
   // Migration for media_statistics removed.
@@ -414,28 +417,30 @@ try {
     const importDir = path.join(process.cwd(), "config", "import", "Tautulli");
     if (!fs.existsSync(importDir)) {
       fs.mkdirSync(importDir, { recursive: true });
-      console.log(`[Init] Created Tautulli import directory: ${importDir}`);
+      Logger.info(`[Init] Created Tautulli import directory: ${importDir}`);
     }
   } catch (e) {
-    console.error("[Init] Failed to create Tautulli import directory:", e);
+    Logger.error("[Init] Failed to create Tautulli import directory:", e);
   }
 } catch (error) {
-  console.error("CRITICAL: FAILED TO INITIALIZE DATABASE.");
-  console.error(error);
+  Logger.error("CRITICAL: FAILED TO INITIALIZE DATABASE.");
+  Logger.error("Database Init Error:", error);
 
-  console.error("The application will start in recovery mode. Please check file permissions.");
+  Logger.error("The application will start in recovery mode. Please check file permissions.");
 
   // Mock DB to prevent crash at startup (e.g. when servers.ts calls prepare())
-  dbInstance = {
+  const mockDB: DBInterface = {
     pragma: () => { },
     exec: () => { },
-    prepare: () => ({
+    prepare: (<T = unknown[], R = unknown>(sql: string): StatementInterface<T, R> => ({
       get: () => { throw new Error("Database not initialized (Check Permissions)"); },
       all: () => { throw new Error("Database not initialized (Check Permissions)"); },
       run: () => { throw new Error("Database not initialized (Check Permissions)"); },
-    }),
-    transaction: () => () => { throw new Error("Database not initialized (Check Permissions)"); },
+    })),
+    transaction: <F extends (...args: any[]) => any>(fn: F) => (() => { throw new Error("Database not initialized (Check Permissions)"); }) as unknown as F,
   };
+
+  dbInstance = mockDB;
 }
 
 export const db = dbInstance as Database.Database;

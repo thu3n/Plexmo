@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getRuleInstances, getRuleUsers, getRuleServers } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ impactedUsers });
 
     } catch (error) {
-        console.error("Analysis failed:", error);
+        Logger.error("Analysis failed:", error);
         return NextResponse.json({ error: "Analysis failed" }, { status: 500 });
     }
 }

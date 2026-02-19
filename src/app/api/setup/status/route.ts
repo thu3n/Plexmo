@@ -1,6 +1,7 @@
 
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/settings"; // Or DB directly if preferred
+import { Logger } from "@/lib/logger";
 
 export async function GET() {
     try {
@@ -15,7 +16,7 @@ export async function GET() {
 
         return NextResponse.json({ configured: isConfigured });
     } catch (error) {
-        console.error("Failed to check setup status:", error);
+        Logger.error("Failed to check setup status:", error);
         return NextResponse.json({ configured: false }, { status: 500 });
     }
 }

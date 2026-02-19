@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getRuleInstances } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(results);
 
     } catch (error) {
-        console.error("Debugger API Error:", error);
+        Logger.error("Debugger API Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

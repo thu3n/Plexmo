@@ -1,5 +1,6 @@
 import { createServer, listAllServers } from "@/lib/servers";
 import { normalizePlexUrl } from "@/lib/plex";
+import { Logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -8,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ servers }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ett okänt fel uppstod";
-    console.error("List servers failed:", message);
+    Logger.error("List servers failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ server }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ett okänt fel uppstod";
-    console.error("Create server failed:", message);
+    Logger.error("Create server failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

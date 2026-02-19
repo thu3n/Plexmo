@@ -2,6 +2,7 @@ import { getDashboardSnapshot } from "@/lib/plex";
 import { getServerForDashboard } from "@/lib/servers";
 import { NextResponse } from "next/server";
 import { checkAndLogViolations } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
   try {
@@ -105,7 +106,7 @@ export async function GET(request: Request) {
 
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ett okänt fel uppstod";
-    console.error("Plex dashboard fetch failed:", message);
+    Logger.error("Plex dashboard fetch failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

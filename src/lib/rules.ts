@@ -2,6 +2,7 @@ import { db } from "./db";
 import { listInternalServers } from "./servers";
 import { terminateSession, PlexSession, PlexServerConfig } from "./plex";
 import { sendSessionTerminatedNotification, sendDiscordNotification } from "./discord";
+import { Logger } from "./logger";
 
 // --- Types ---
 
@@ -35,17 +36,36 @@ export interface RuleInstance {
     global?: boolean;
     userNames?: string[];
     serverNames?: string[];
+    userCount?: number;
+    serverCount?: number;
 }
 
-// --- Migration ---
+interface RuleInstanceRow {
+    id: string;
+    type: string;
+    name: string;
+    enabled: number; // SQLite stores booleans as 0/1
+    settings: string; // JSON string
+    discordWebhookIds: string; // JSON string or text
+    discordWebhookId: string | null; // Legacy
+    createdAt: string;
+}
 
-// Migration logic removed as per user request (no default rules).
+interface RuleUserRow {
+    userId: string;
+    username: string;
+}
+
+interface RuleServerRow {
+    serverId: string;
+    name: string;
+}
 
 // --- CRUD ---
 
 export const getRuleInstances = (): RuleInstance[] => {
     try {
-        const rows = db.prepare("SELECT * FROM rule_instances").all() as any[];
+        const rows = db.prepare("SELECT * FROM rule_instances").all() as RuleInstanceRow[];
         return rows.map(r => {
             // Fetch assigned server names
             const servers = db.prepare(`
@@ -55,7 +75,9 @@ export const getRuleInstances = (): RuleInstance[] => {
                 WHERE sr.ruleKey = ?
             `).all(r.id) as { name: string }[];
             const serverNames = servers.map(s => s.name);
-            const serverCount = servers.length;
+
+            const serverCountResult = db.prepare("SELECT COUNT(*) as count FROM server_rules WHERE ruleKey = ?").get(r.id) as { count: number };
+            const serverCount = serverCountResult.count;
 
             // Fetch assigned user names (limit 5 for preview)
             const users = db.prepare(`
@@ -68,11 +90,12 @@ export const getRuleInstances = (): RuleInstance[] => {
             const userNames = users.map(u => u.username);
 
             // Get total user count
-            const userCount = (db.prepare("SELECT COUNT(*) as count FROM user_rules WHERE ruleKey = ?").get(r.id) as any).count;
+            const userCountResult = db.prepare("SELECT COUNT(*) as count FROM user_rules WHERE ruleKey = ?").get(r.id) as { count: number };
+            const userCount = userCountResult.count;
 
             const isGlobal = userCount === 0 && serverCount === 0;
 
-            let ids = [];
+            let ids: string[] = [];
             try {
                 if (r.discordWebhookIds) {
                     ids = JSON.parse(r.discordWebhookIds);
@@ -96,21 +119,24 @@ export const getRuleInstances = (): RuleInstance[] => {
             };
         });
     } catch (error) {
-        console.error("Failed to fetch rule instances:", error);
+        Logger.error("Failed to fetch rule instances:", error);
         return [];
     }
 };
 
 export const getRuleInstance = (id: string): RuleInstance | undefined => {
     try {
-        const row = db.prepare("SELECT * FROM rule_instances WHERE id = ?").get(id) as any;
+        const row = db.prepare("SELECT * FROM rule_instances WHERE id = ?").get(id) as RuleInstanceRow | undefined;
         if (!row) return undefined;
 
-        const userCount = (db.prepare("SELECT COUNT(*) as count FROM user_rules WHERE ruleKey = ?").get(id) as any).count;
-        const serverCount = (db.prepare("SELECT COUNT(*) as count FROM server_rules WHERE ruleKey = ?").get(id) as any).count;
+        const userCountResult = db.prepare("SELECT COUNT(*) as count FROM user_rules WHERE ruleKey = ?").get(id) as { count: number };
+        const serverCountResult = db.prepare("SELECT COUNT(*) as count FROM server_rules WHERE ruleKey = ?").get(id) as { count: number };
+
+        const userCount = userCountResult.count;
+        const serverCount = serverCountResult.count;
         const isGlobal = userCount === 0 && serverCount === 0;
 
-        let ids = [];
+        let ids: string[] = [];
         try {
             if (row.discordWebhookIds) ids = JSON.parse(row.discordWebhookIds);
             else if (row.discordWebhookId) ids = [row.discordWebhookId];
@@ -127,7 +153,7 @@ export const getRuleInstance = (id: string): RuleInstance | undefined => {
             serverCount
         };
     } catch (error) {
-        console.error(`Failed to fetch rule instance ${id}:`, error);
+        Logger.error(`Failed to fetch rule instance ${id}:`, error);
         return undefined;
     }
 };
@@ -167,7 +193,7 @@ export const createRuleInstance = (instance: Omit<RuleInstance, "createdAt">, as
             }
         })();
     } catch (error) {
-        console.error("Failed to create rule instance:", error);
+        Logger.error("Failed to create rule instance:", error);
         throw error;
     }
 };
@@ -186,7 +212,7 @@ export const updateRuleInstance = (instance: RuleInstance) => {
             discordWebhookIds: webhookIds
         });
     } catch (error) {
-        console.error("Failed to update rule instance:", error);
+        Logger.error("Failed to update rule instance:", error);
         throw error;
     }
 };
@@ -199,7 +225,7 @@ export const deleteRuleInstance = (id: string) => {
             db.prepare("DELETE FROM server_rules WHERE ruleKey = ?").run(id);
         })();
     } catch (error) {
-        console.error("Failed to delete rule instance:", error);
+        Logger.error("Failed to delete rule instance:", error);
         throw error;
     }
 };
@@ -213,7 +239,7 @@ export const getRuleUsers = (ruleId: string): { userId: string; username: string
             FROM users u
             LEFT JOIN servers s ON u.serverId = s.id
             GROUP BY u.id, u.username, u.email
-        `).all() as { id: string, username: string, email: string, serverNames: string }[];
+        `).all() as { id: string, username: string, email: string, serverNames: string | null }[];
 
         const assignedUserIds = new Set(
             (db.prepare("SELECT userId FROM user_rules WHERE ruleKey = ?").all(ruleId) as { userId: string }[]).map(r => r.userId)
@@ -227,7 +253,7 @@ export const getRuleUsers = (ruleId: string): { userId: string; username: string
             enabled: assignedUserIds.has(u.id)
         }));
     } catch (error) {
-        console.error(`Failed to fetch users for rule ${ruleId}:`, error);
+        Logger.error(`Failed to fetch users for rule ${ruleId}:`, error);
         return [];
     }
 };
@@ -240,7 +266,7 @@ export const toggleUserRule = (userId: string, ruleId: string, enabled: boolean)
             db.prepare("DELETE FROM user_rules WHERE userId = ? AND ruleKey = ?").run(userId, ruleId);
         }
     } catch (error) {
-        console.error(`Failed to toggle rule ${ruleId} for user ${userId}:`, error);
+        Logger.error(`Failed to toggle rule ${ruleId} for user ${userId}:`, error);
         throw error;
     }
 };
@@ -258,7 +284,7 @@ export const getRuleServers = (ruleId: string): { serverId: string; name: string
             enabled: assignedServerIds.has(s.id)
         }));
     } catch (error) {
-        console.error(`Failed to fetch servers for rule ${ruleId}:`, error);
+        Logger.error(`Failed to fetch servers for rule ${ruleId}:`, error);
         return [];
     }
 };
@@ -271,7 +297,7 @@ export const toggleServerRule = (serverId: string, ruleId: string, enabled: bool
             db.prepare("DELETE FROM server_rules WHERE serverId = ? AND ruleKey = ?").run(serverId, ruleId);
         }
     } catch (error) {
-        console.error(`Failed to toggle rule ${ruleId} for server ${serverId}:`, error);
+        Logger.error(`Failed to toggle rule ${ruleId} for server ${serverId}:`, error);
         throw error;
     }
 };
@@ -287,7 +313,7 @@ export const logRuleEvent = (userId: string, ruleInstanceId: string, details: st
             details
         );
     } catch (error) {
-        console.error("Failed to log rule event:", error);
+        Logger.error("Failed to log rule event:", error);
     }
 };
 
@@ -296,7 +322,7 @@ export const closeRuleEvent = (id: number) => {
     try {
         db.prepare("UPDATE rule_events SET endedAt = ? WHERE id = ?").run(new Date().toISOString(), id);
     } catch (error) {
-        console.error(`Failed to close rule event ${id}:`, error);
+        Logger.error(`Failed to close rule event ${id}:`, error);
     }
 };
 
@@ -304,7 +330,7 @@ export const deleteRuleEvent = (id: number) => {
     try {
         db.prepare("DELETE FROM rule_events WHERE id = ?").run(id);
     } catch (error) {
-        console.error(`Failed to delete rule event ${id}:`, error);
+        Logger.error(`Failed to delete rule event ${id}:`, error);
     }
 };
 
@@ -312,7 +338,7 @@ export const updateRuleEventDetails = (id: number, details: string) => {
     try {
         db.prepare("UPDATE rule_events SET details = ? WHERE id = ?").run(details, id);
     } catch (error) {
-        console.error(`Failed to update rule event details ${id}:`, error);
+        Logger.error(`Failed to update rule event details ${id}:`, error);
     }
 };
 
@@ -359,27 +385,30 @@ function isUserBlockedBySchedule(
 }
 
 
-export const checkAndLogViolations = async (sessions: any[]) => {
+export const checkAndLogViolations = async (sessions: PlexSession[]) => {
 
     try {
         const instances = getRuleInstances();
         // Load servers once if needed
         let serverConfigMap: Map<string, PlexServerConfig> = new Map();
 
+
         // Cache server configs if enforcement is needed anywhere
         if (instances.some(i => i.enabled && i.settings.enforce)) {
             try {
                 const internalServers = await listInternalServers();
-                internalServers.forEach((s: any) => {
-                    serverConfigMap.set(s.id, {
-                        id: s.id,
-                        name: s.name,
-                        baseUrl: s.baseUrl,
-                        token: s.token
-                    });
+                internalServers.forEach((s) => {
+                    if (s.id) {
+                        serverConfigMap.set(s.id, {
+                            id: s.id,
+                            name: s.name,
+                            baseUrl: s.baseUrl,
+                            token: s.token
+                        });
+                    }
                 });
             } catch (e) {
-                console.error("Failed to list internal servers for enforcement:", e);
+                Logger.error("Failed to list internal servers for enforcement:", e);
             }
         }
 
@@ -404,7 +433,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                 // We run this before the 'continue' check to ensure that if a user stops streaming (userSessions=[]),
                 // we still clean up their stale 'ONGOING' events.
                 if (instance.type === "kill_paused_streams") {
-                    const openEvents = db.prepare(`SELECT * FROM rule_events WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL`).all(user.userId, instance.id) as any[];
+                    const openEvents = db.prepare(`SELECT * FROM rule_events WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL`).all(user.userId, instance.id) as { id: number; details: string }[];
 
                     for (const event of openEvents) {
                         try {
@@ -442,7 +471,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
 
                             // Check if session is still valid (still paused)
                             // We look up active_session using ratingKey because active_sessions PK is currently sessionId=RatingKey
-                            const activeSession = db.prepare("SELECT pausedSince FROM active_sessions WHERE sessionId = ?").get(ratingKey) as any;
+                            const activeSession = db.prepare("SELECT pausedSince FROM active_sessions WHERE sessionId = ?").get(ratingKey) as { pausedSince: number } | undefined;
 
                             // If not paused in DB...
                             if (!activeSession?.pausedSince) {
@@ -461,7 +490,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                             }
                         } catch (e) {
                             // On error parsing details, delete the event to be safe
-                            console.error("Error parsing rule event details", e);
+                            Logger.error("Error parsing rule event details", e);
                             deleteRuleEvent(event.id);
                         }
                     }
@@ -469,7 +498,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                 // ---------------------------------------------
 
                 const hasDirectRule = user.enabled;
-                const hasServerRule = userSessions.some(s => serverRuleMap.has(s.serverId));
+                const hasServerRule = userSessions.some(s => s.serverId && serverRuleMap.has(s.serverId));
 
                 if (!isGlobal && !hasDirectRule && !hasServerRule) continue;
 
@@ -528,9 +557,9 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     ? substituteVariables(message, limit)
                                     : `Stream paused for >${limit} minutes.`;
 
-                                console.log(`[Enforcement] Rule "${instance.name}" terminating paused session ${session.id} for ${user.username}`);
+                                Logger.info(`[Enforcement] Rule "${instance.name}" terminating paused session ${session.id} for ${user.username}`);
 
-                                const serverConfig = serverConfigMap.get(session.serverId);
+                                const serverConfig = session.serverId ? serverConfigMap.get(session.serverId) : undefined;
                                 if (serverConfig) {
                                     // FIX: Use the actual Plex session ID/Key, not the internal ratingKey (session.id)
                                     const actualSessionId = session.sessionId || session.sessionKey;
@@ -556,17 +585,17 @@ export const checkAndLogViolations = async (sessions: any[]) => {
 
                                             if (webhookIds.length > 0) {
                                                 for (const wid of webhookIds) {
-                                                    const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as any;
+                                                    const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as { url: string } | undefined;
                                                     if (webhook) {
                                                         await sendSessionTerminatedNotification(session as PlexSession, `Rule "${instance.name}": ${terminationReason}`, webhook.url);
                                                     }
                                                 }
                                             }
                                         } catch (err) {
-                                            console.error(`[Enforcement] Failed to terminate session ${actualSessionId}`, err);
+                                            Logger.error(`[Enforcement] Failed to terminate session ${actualSessionId}`, err);
                                         }
                                     } else {
-                                        console.error(`[Enforcement] Cannot terminate session ${session.id}: No valid sessionId or sessionKey found.`);
+                                        Logger.error(`[Enforcement] Cannot terminate session ${session.id}: No valid sessionId or sessionKey found.`);
                                     }
                                 }
                             }
@@ -621,14 +650,14 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     ? `Access blocked during scheduled hours. Try again later.`
                                     : `Access only allowed during scheduled hours.`);
 
-                            console.log(`[Scheduled Access] Rule "${instance.name}" blocking ${user.username} (${userSessions.length} sessions)`);
+                            Logger.info(`[Scheduled Access] Rule "${instance.name}" blocking ${user.username} (${userSessions.length} sessions)`);
 
                             // Terminate all active sessions for this user
                             let anyTerminated = false;
                             for (const session of userSessions) {
                                 const serverId = session.serverId;
                                 const sessionId = session.sessionId || session.sessionKey;
-                                const serverConfig = serverConfigMap.get(serverId);
+                                const serverConfig = serverId ? serverConfigMap.get(serverId) : undefined;
 
                                 if (serverConfig && sessionId) {
                                     try {
@@ -640,14 +669,14 @@ export const checkAndLogViolations = async (sessions: any[]) => {
 
                                         if (webhookIds.length > 0) {
                                             for (const wid of webhookIds) {
-                                                const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as any;
+                                                const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as { url: string } | undefined;
                                                 if (webhook) {
                                                     await sendSessionTerminatedNotification(session as PlexSession, `Rule "${instance.name}": ${terminationReason}`, webhook.url);
                                                 }
                                             }
                                         }
                                     } catch (err) {
-                                        console.error(`[Scheduled Access] Failed to terminate session ${sessionId}`, err);
+                                        Logger.error(`[Scheduled Access] Failed to terminate session ${sessionId}`, err);
                                     }
                                 }
                             }
@@ -658,7 +687,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     d.enforced = true;
                                     updateRuleEventDetails(openEvent.id, JSON.stringify(d));
                                 } catch (e) {
-                                    console.error("Failed to update scheduled access event details", e);
+                                    Logger.error("Failed to update scheduled access event details", e);
                                 }
                             }
                         }
@@ -739,7 +768,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                             if (kill_all) {
                                 sessionsToKill = [...userSessions];
                             } else {
-                                userSessions.sort((a: any, b: any) => {
+                                userSessions.sort((a, b) => {
                                     const keyA = parseInt(a.sessionKey || "0", 10);
                                     const keyB = parseInt(b.sessionKey || "0", 10);
                                     return keyA - keyB;
@@ -753,7 +782,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                             for (const s of sessionsToKill) {
                                 const serverId = s.serverId;
                                 const sessionId = s.sessionId || s.sessionKey;
-                                const serverConfig = serverConfigMap.get(serverId);
+                                const serverConfig = serverId ? serverConfigMap.get(serverId) : undefined;
 
                                 if (serverConfig && sessionId) {
                                     console.log(`[Enforcement] Rule "${instance.name}" terminating ${sessionId} for ${user.username}`);
@@ -766,14 +795,14 @@ export const checkAndLogViolations = async (sessions: any[]) => {
 
                                         if (webhookIds.length > 0) {
                                             for (const wid of webhookIds) {
-                                                const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as any;
+                                                const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as { url: string } | undefined;
                                                 if (webhook) {
                                                     await sendSessionTerminatedNotification(s as PlexSession, `Rule "${instance.name}": ${terminationReason}`, webhook.url);
                                                 }
                                             }
                                         }
                                     } catch (err) {
-                                        console.error(`[Enforcement] Failed to terminate session ${sessionId}`, err);
+                                        Logger.error(`[Enforcement] Failed to terminate session ${sessionId}`, err);
                                     }
                                 }
                             }
@@ -784,7 +813,7 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                                     d.enforced = true;
                                     updateRuleEventDetails(openEvent.id, JSON.stringify(d));
                                 } catch (e) {
-                                    console.error("Failed to update max concurrent event details", e);
+                                    Logger.error("Failed to update max concurrent event details", e);
                                 }
                             }
                         }
@@ -795,11 +824,24 @@ export const checkAndLogViolations = async (sessions: any[]) => {
                     }
                 }
             }
+
+
         }
     } catch (e) {
-        console.error("Error checking rule violations:", e);
+        Logger.error("Error checking rule violations:", e);
     }
 };
+
+interface RuleEventRow {
+    id: number;
+    userId: string;
+    ruleKey: string;
+    triggeredAt: string;
+    endedAt: string | null;
+    details: string;
+    ruleName: string | null;
+    ruleType: string | null;
+}
 
 export const getUserRuleHistory = (userId: string) => {
     try {
@@ -809,7 +851,7 @@ export const getUserRuleHistory = (userId: string) => {
         LEFT JOIN rule_instances ri ON re.ruleKey = ri.id
         WHERE re.userId = ?
         ORDER BY re.triggeredAt DESC
-    `).all(userId) as any[];
+    `).all(userId) as RuleEventRow[];
 
         return events.map(e => {
             let details = {};
@@ -822,25 +864,31 @@ export const getUserRuleHistory = (userId: string) => {
             };
         });
     } catch (error) {
-        console.error(`Failed to get rule history for user ${userId}:`, error);
+        Logger.error(`Failed to get rule history for user ${userId}:`, error);
         return [];
     }
 };
 
 export const getGlobalRules = () => {
-    // For now assuming all instances are potential global rules 
-    // or we only care about max_concurrent_streams as 'key' for the UI?
-    // The route uses rule.key. In instances, that matches 'id'.
-    // But older logic used 'max_concurrent_streams' as a key.
-    // The route expects an array of objects with a 'key' property.
-    // Let's return RuleInstances mapped to have a key.
-    // Wait, are there "other" global rules? 
-    // The migration above converts legacy global rules to instances.
-    const instances = getRuleInstances();
-    return instances.map(i => ({
-        ...i,
-        key: i.id
-    }));
+    try {
+        const rules = db.prepare(`
+            SELECT r.* 
+            FROM rule_instances r
+            LEFT JOIN user_rules ur ON r.id = ur.ruleKey
+            LEFT JOIN server_rules sr ON r.id = sr.ruleKey
+            WHERE ur.userId IS NULL AND sr.serverId IS NULL
+            GROUP BY r.id
+        `).all() as RuleInstanceRow[];
+
+        return rules.map(r => ({
+            ...r,
+            enabled: r.enabled === 1,
+            settings: JSON.parse(r.settings)
+        }));
+    } catch (error) {
+        Logger.error("Failed to fetch global rules:", error);
+        return [];
+    }
 };
 
 export const getUserRules = (userId: string) => {
@@ -850,7 +898,7 @@ export const getUserRules = (userId: string) => {
         FROM rule_instances ri
         JOIN user_rules ur ON ri.id = ur.ruleKey
         WHERE ur.userId = ?
-    `).all(userId) as any[];
+    `).all(userId) as RuleInstanceRow[];
 
         return rules.map(r => {
             let settings = {};
@@ -863,7 +911,7 @@ export const getUserRules = (userId: string) => {
             };
         });
     } catch (error) {
-        console.error(`Failed to get user rules for ${userId}:`, error);
+        Logger.error(`Failed to get user rules for ${userId}:`, error);
         return [];
     }
 };

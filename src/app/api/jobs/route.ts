@@ -3,6 +3,7 @@ import { getJobs, createJob, getRunningJobForTarget } from "@/lib/jobs";
 import { syncLibraryItems, syncLibraries, syncAllLibrariesContent, syncAllLibraryLists } from "@/lib/libraries";
 import { getServerById } from "@/lib/servers";
 import { resolveServer } from "@/lib/plex";
+import { Logger } from "@/lib/logger";
 
 export async function GET() {
     try {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
 
             // Start sync in background (no await)
             syncLibraryItems(serverConfig, libraryKey, job.id).catch(err => {
-                console.error(`[API] Background sync failed for job ${job.id}:`, err);
+                Logger.error(`[API] Background sync failed for job ${job.id}:`, err);
             });
 
             return NextResponse.json({ job });
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
             // Start sync in background
             syncLibraries(serverConfig, job.id).catch(err => {
-                console.error(`[API] Background library list sync failed for job ${job.id}:`, err);
+                Logger.error(`[API] Background library list sync failed for job ${job.id}:`, err);
             });
 
             return NextResponse.json({ job });
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
 
             // Start sync in background
             syncAllLibrariesContent(job.id).catch(err => {
-                console.error(`[API] Global content sync failed for job ${job.id}:`, err);
+                Logger.error(`[API] Global content sync failed for job ${job.id}:`, err);
             });
 
             return NextResponse.json({ job });
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
             // Start sync in background
             syncAllLibraryLists(job.id).catch(err => {
-                console.error(`[API] Global library list sync failed for job ${job.id}:`, err);
+                Logger.error(`[API] Global library list sync failed for job ${job.id}:`, err);
             });
 
             return NextResponse.json({ job });
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Unknown job type" }, { status: 400 });
 
     } catch (error: any) {
-        console.error("[API] Job creation failed:", error);
+        Logger.error("[API] Job creation failed:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

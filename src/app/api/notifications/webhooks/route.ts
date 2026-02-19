@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getWebhooks } from "@/lib/discord";
+import { Logger } from "@/lib/logger";
 
 export async function GET() {
     try {
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, id });
     } catch (error) {
-        console.error("Failed to create webhook:", error);
+        Logger.error("Failed to create webhook:", error);
         return NextResponse.json({ error: "Failed to create webhook" }, { status: 500 });
     }
 }

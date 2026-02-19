@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { Logger } from "@/lib/logger";
 
 interface Props {
     params: Promise<{
@@ -32,7 +33,7 @@ export async function PUT(request: Request, props: Props) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Failed to update webhook:", error);
+        Logger.error("Failed to update webhook:", error);
         return NextResponse.json({ error: "Failed to update webhook" }, { status: 500 });
     }
 }

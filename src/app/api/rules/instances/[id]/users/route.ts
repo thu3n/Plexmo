@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRuleUsers, toggleUserRule } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 interface Props {
     params: Promise<{
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest, props: Props) {
         const users = getRuleUsers(params.id);
         return NextResponse.json(users);
     } catch (error) {
-        console.error("Failed to fetch rule users:", error);
+        Logger.error("Failed to fetch rule users:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest, props: Props) {
         toggleUserRule(userId, params.id, enabled);
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Failed to update rule users:", error);
+        Logger.error("Failed to update rule users:", error);
         return NextResponse.json({ error: "Failed to update" }, { status: 500 });
     }
 }

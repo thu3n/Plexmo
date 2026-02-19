@@ -32,6 +32,7 @@ const mockHistory: HistoryEntry[] = [
         id: "1",
         title: "Movie A",
         user: "User1",
+        serverId: "Server1",
         startTime: BASE_TIME + 3600000, // 01:00
         duration: 1800,
         pausedCounter: 0,
@@ -51,6 +52,7 @@ const mockHistory: HistoryEntry[] = [
         id: "2",
         title: "Movie B",
         user: "User2",
+        serverId: "Server1",
         startTime: BASE_TIME + 7200000, // 02:00
         duration: 3600,
         pausedCounter: 0,

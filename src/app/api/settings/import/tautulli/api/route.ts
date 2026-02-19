@@ -3,6 +3,7 @@ import { db as plexmoDb } from "@/lib/db";
 import { addHistoryEntry } from "@/lib/history";
 import { mapTautulliToPlexmo, TautulliFullEntry } from "@/lib/tautulli-mapper";
 import { createJob, updateJob } from "@/lib/jobs";
+import { Logger } from "@/lib/logger";
 
 interface TautulliServer {
     id: number;
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
                     stmt.run("TAUTULLI_URL", cleanUrl);
                     stmt.run("TAUTULLI_API_KEY", apiKey);
                 } catch (e) {
-                    console.warn("Failed to save Tautulli settings", e);
+                    Logger.warn("Failed to save Tautulli settings", e);
                 }
 
                 // 2. Fetch History (PER SERVER)
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
                     }
 
                 } catch (e) {
-                    console.warn("Failed to resolve server names", e);
+                    Logger.warn("Failed to resolve server names", e);
                 }
 
 
@@ -129,14 +130,14 @@ export async function POST(request: Request) {
                                     activeSessionsMap.set(key, startTs);
                                 }
                             });
-                            console.log(`[Import] Found ${activeSessionsMap.size} active sessions to cross-reference.`);
+                            Logger.info(`[Import] Found ${activeSessionsMap.size} active sessions to cross-reference.`);
                             if (activeSessionsMap.size > 0) {
-                                console.log(`[Import] Active Session Sample Keys: ${Array.from(activeSessionsMap.keys()).slice(0, 3).join(', ')}`);
+                                Logger.debug(`[Import] Active Session Sample Keys: ${Array.from(activeSessionsMap.keys()).slice(0, 3).join(', ')}`);
                             }
                         }
                     }
                 } catch (e) {
-                    console.warn("Failed to fetch active sessions", e);
+                    Logger.warn("Failed to fetch active sessions", e);
                 }
 
                 // C. Pre-fetch Counts
@@ -152,7 +153,7 @@ export async function POST(request: Request) {
                     if (u.username) userMap.set(`${u.serverId}:${u.username}`, u.id);
                     if (u.title) userMap.set(`${u.serverId}:${u.title}`, u.id); // Fallback to title
                 });
-                console.log(`[Import] Loaded ${allUsers.length} users for resolution.`);
+                Logger.info(`[Import] Loaded ${allUsers.length} users for resolution.`);
 
                 const unknownUsers = new Set<string>();
 
@@ -167,7 +168,7 @@ export async function POST(request: Request) {
                             grandTotalItems += count;
                         }
                     } catch (e) {
-                        console.error(`Failed to get count for ${sourceId}`, e);
+                        Logger.error(`Failed to get count for ${sourceId}`, e);
                     }
                 }
 
@@ -237,8 +238,8 @@ export async function POST(request: Request) {
                             for (let attempt = 1; attempt <= 10; attempt++) {
                                 try {
                                     if (attempt === 1) {
-                                        console.log(`[Perf] Starting Fetch Batch: ${start} (Size: ${actualBatchSize}) for ${serverName} at ${new Date().toISOString()}`);
-                                        console.time(`[Perf] Fetch Batch ${start}`);
+                                        Logger.debug(`[Perf] Starting Fetch Batch: ${start} (Size: ${actualBatchSize}) for ${serverName} at ${new Date().toISOString()}`);
+                                        // console.time(\`[Perf] Fetch Batch ${start}\`);
                                     }
 
                                     // TIMEOUT & ERROR HANDLER WRAPPER
@@ -255,7 +256,7 @@ export async function POST(request: Request) {
                                     // ADAPTIVE FIX: If 400 Bad Request
                                     if (histRes.status === 400) {
                                         if (currentBatchSize > 200) {
-                                            console.warn(`Hit 400 Bad Request at offset ${start} (len ${actualBatchSize}). Reducing base batch to 200.`);
+                                            Logger.warn(`Hit 400 Bad Request at offset ${start} (len ${actualBatchSize}). Reducing base batch to 200.`);
                                             currentBatchSize = 200;
                                             fetchSuccess = false;
                                             break;
@@ -272,8 +273,8 @@ export async function POST(request: Request) {
 
                                     if (histJson?.response?.result === 'success') {
                                         fetchSuccess = true;
-                                        console.timeEnd(`[Perf] Fetch Batch ${start}`);
-                                        console.log(`[Perf] Fetch Success for ${serverName} at ${start}. Processing...`);
+                                        // console.timeEnd(\`[Perf] Fetch Batch ${start}\`);
+                                        Logger.debug(`[Perf] Fetch Success for ${serverName} at ${start}. Processing...`);
                                         break;
                                     } else {
                                         throw new Error(histJson?.response?.message || "API Error: No Success Result");
@@ -284,7 +285,7 @@ export async function POST(request: Request) {
 
                                     // Strict Network Error Handling: Reduce Batch Size immediately
                                     if (isNetworkError && currentBatchSize > 200) {
-                                        console.warn(`Network Instability (${e.message}) at offset ${start}. Reducing batch size to 200 and retrying.`);
+                                        Logger.warn(`Network Instability (${e.message}) at offset ${start}. Reducing batch size to 200 and retrying.`);
                                         currentBatchSize = 200;
                                         fetchSuccess = false;
                                         break; // Break retry loop to restart 'while' loop with new smaller batch size
@@ -293,7 +294,7 @@ export async function POST(request: Request) {
                                     // Turbo Mode: fixed 100ms delay for retries
                                     const delay = isNetworkError ? 1000 : 100; // Wait longer for network issues
                                     const errorMsg = `Batch attempt ${attempt}/10 failed for ${serverName} at ${start} (batch size ${currentBatchSize}): ${e.message}`;
-                                    console.warn(errorMsg);
+                                    Logger.warn(errorMsg);
 
                                     if (attempt > 2) {
                                         updateJob(job.id, { message: `Warning: ${errorMsg}. Retrying...` });
@@ -327,7 +328,7 @@ export async function POST(request: Request) {
                                 }
 
                                 const failMsg = `CRITICAL: Failed to fetch batch at ${start} for ${serverName} after 10 retries (batch size ${currentBatchSize}). Skipping batch.`;
-                                console.error(failMsg);
+                                Logger.error(failMsg);
                                 updateJob(job.id, { message: failMsg });
 
                                 // SKIP this batch, but continue importing the rest!
@@ -361,7 +362,7 @@ export async function POST(request: Request) {
                             // fetch series meta (existing logic)
                             if (neededKeys.size > 0) {
                                 // Fetch in chunks or sequentially? Tautulli might rate limit.
-                                console.log(`[Import] Fetching metadata for ${neededKeys.size} new series...`);
+                                Logger.info(`[Import] Fetching metadata for ${neededKeys.size} new series...`);
                                 for (const key of neededKeys) {
                                     try {
                                         const metaRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_metadata&rating_key=${key}`);
@@ -381,14 +382,14 @@ export async function POST(request: Request) {
                                             }
                                         }
                                     } catch (e) {
-                                        console.warn(`Failed to fetch metadata for GP Key ${key}`, e);
+                                        Logger.warn(`Failed to fetch metadata for GP Key ${key}`, e);
                                     }
                                 }
                             }
 
                             // fetch movie meta (new logic)
                             if (neededMovieKeys.size > 0) {
-                                console.log(`[Import] Fetching metadata for ${neededMovieKeys.size} movies...`);
+                                Logger.info(`[Import] Fetching metadata for ${neededMovieKeys.size} movies...`);
                                 for (const key of neededMovieKeys) {
                                     try {
                                         const metaRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_metadata&rating_key=${key}`);
@@ -407,13 +408,13 @@ export async function POST(request: Request) {
                                             }
                                         }
                                     } catch (e) {
-                                        console.warn(`Failed to fetch metadata for Movie Key ${key}`, e);
+                                        Logger.warn(`Failed to fetch metadata for Movie Key ${key}`, e);
                                     }
                                 }
                             }
 
                             // Process Batch in Transaction
-                            console.time(`[Perf] Transaction Batch ${start}`);
+                            // console.time(\`[Perf] Transaction Batch ${start}\`);
                             const processBatch = plexmoDb.transaction((entries: any[]) => {
                                 for (const row of entries) {
                                     try {
@@ -519,7 +520,7 @@ export async function POST(request: Request) {
                                                 if (mMeta.tmdb) compatibleEntry.tmdb_id = mMeta.tmdb;
 
                                                 if (mMeta.guid || mMeta.imdb || mMeta.tmdb) {
-                                                    // console.log(`[Import] Applied Movie Meta for ${row.title}:`, { guid: mMeta.guid, imdb: mMeta.imdb, tmdb: mMeta.tmdb });
+                                                    // Logger.debug(`[Import] Applied Movie Meta for ${row.title}:`, { guid: mMeta.guid, imdb: mMeta.imdb, tmdb: mMeta.tmdb });
                                                 }
                                             }
                                         }
@@ -544,7 +545,7 @@ export async function POST(request: Request) {
                                         let resolvedUserId = userMap.get(`${String(targetId)}:${row.user}`);
 
                                         if (row.media_type === 'episode' && mapped.plex_guid) {
-                                            // console.log(`[Import] Mapped Episode ${mapped.title} (S${mapped.parentIndex}E${mapped.index}) -> Plex GUID: ${mapped.plex_guid}`);
+                                            // Logger.debug(`[Import] Mapped Episode ${mapped.title} (S${mapped.parentIndex}E${mapped.index}) -> Plex GUID: ${mapped.plex_guid}`);
                                         }
 
                                         // GHOST USER HANDLING: If not found, create them!
@@ -577,10 +578,10 @@ export async function POST(request: Request) {
                                                 // Also map by ID to be safe for future if we switched lookup strategy
                                                 // userMap.set(`${String(targetId)}:${ghostId}`, ghostId); 
 
-                                                console.log(`[Import] Created Ghost User: ${ghostUsername} (${ghostId}) on server ${targetId}`);
+                                                Logger.info(`[Import] Created Ghost User: ${ghostUsername} (${ghostId}) on server ${targetId}`);
 
                                             } catch (e) {
-                                                console.error(`[Import] Failed to create ghost user ${ghostUsername}`, e);
+                                                Logger.error(`[Import] Failed to create ghost user ${ghostUsername}`, e);
                                             }
                                         }
 
@@ -603,8 +604,8 @@ export async function POST(request: Request) {
                             });
 
                             processBatch(records);
-                            console.timeEnd(`[Perf] Transaction Batch ${start}`);
-                            console.log(`[Perf] Batch Complete: ${start} at ${new Date().toISOString()}`);
+                            // console.timeEnd(\`[Perf] Transaction Batch ${start}\`);
+                            Logger.info(`[Perf] Batch Complete: ${start} at ${new Date().toISOString()}`);
 
                             // IMPORTANT FIX: use currentBatchSize instead of length
                             start += currentBatchSize;
@@ -648,11 +649,11 @@ export async function POST(request: Request) {
                         if (serverItemsProcessed < serverTotal) {
                             const unprocessed = serverTotal - serverItemsProcessed;
                             failedCount += unprocessed;
-                            console.warn(`Server ${serverName}: Expected ${serverTotal}, processed ${serverItemsProcessed}. Added ${unprocessed} to failed count.`);
+                            Logger.warn(`Server ${serverName}: Expected ${serverTotal}, processed ${serverItemsProcessed}. Added ${unprocessed} to failed count.`);
                         }
 
                     } catch (err: any) {
-                        console.error(`Error importing server ${sourceId}`, err);
+                        Logger.error(`Error importing server ${sourceId}`, err);
                         const unprocessed = serverTotal - (serverItemsProcessed || 0);
                         if (unprocessed > 0) {
                             failedCount += unprocessed;
@@ -665,7 +666,7 @@ export async function POST(request: Request) {
                 if (unknownUsers.size > 0) {
                     const sample = Array.from(unknownUsers).slice(0, 5).join(", ");
                     debugMsg = ` | Unmatched Users: ${unknownUsers.size} (e.g. ${sample})`;
-                    console.warn(`[Import] Unknown Users (${unknownUsers.size}):`, Array.from(unknownUsers));
+                    Logger.warn(`[Import] Unknown Users (${unknownUsers.size}):`, Array.from(unknownUsers));
                 } else {
                     debugMsg = " | All users matched.";
                 }
@@ -678,7 +679,7 @@ export async function POST(request: Request) {
                 });
 
             } catch (err: any) {
-                console.error("Background Job Failed:", err);
+                Logger.error("Background Job Failed:", err);
                 updateJob(job.id, { status: 'failed', message: err.message || "Unknown Error" });
             }
         })();
@@ -686,7 +687,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, jobId: job.id });
 
     } catch (error: any) {
-        console.error("Tautulli API Import Error:", error);
+        Logger.error("Tautulli API Import Error:", error);
         return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }
 }

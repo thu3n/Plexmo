@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { plexFetch } from "@/lib/plex";
+import { Logger } from "@/lib/logger";
 
 interface StatRequest {
     items: {
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
                         viewCount: Number(l.viewCount || 0) // Capture view count (watched status)
                     }));
                 } catch (e) {
-                    console.error(`[Stats] Failed to fetch episodes from ${srcServer.name}`, e);
+                    Logger.error(`[Stats] Failed to fetch episodes from ${srcServer.name}`, e);
                     return [];
                 }
             });
@@ -345,8 +346,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid type" }, { status: 400 });
 
     } catch (e: any) {
-        console.error("Stats Error Stack:", e.stack);
-        console.error("Stats Error Message:", e.message);
+        Logger.error("Stats Error Stack:", e.stack);
+        Logger.error("Stats Error Message:", e.message);
         return NextResponse.json({ error: "Internal Server Error", details: e.message }, { status: 500 });
     }
 }

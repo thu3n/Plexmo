@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getUserRules, getGlobalRules } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ username: string }> }) {
     try {
@@ -35,12 +36,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 FROM server_rules sr
                 JOIN servers s ON sr.serverId = s.id
                 WHERE sr.ruleKey = ?
-            `).all(rule.key) as { serverId: string, name: string }[];
+            `).all(rule.id) as { serverId: string, name: string }[];
 
             // Filter to only the servers this user belongs to
             const userEnabledServers = enabledServers.filter(s => userServerIds.includes(s.serverId));
 
-            serverRules[rule.key] = {
+            serverRules[rule.id] = {
                 enabled: userEnabledServers.length > 0,
                 servers: userEnabledServers
             };
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         return NextResponse.json({ userId, rules: userRules.map((r: any) => r.id), serverRules });
     } catch (error) {
-        console.error("Error fetching user rules:", error);
+        Logger.error("Error fetching user rules:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

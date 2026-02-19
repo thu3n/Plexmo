@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runCronJob } from "@/lib/cron";
+import { Logger } from "@/lib/logger";
 
 // Force dynamic to ensure it runs every time
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
         const result = await runCronJob();
         return NextResponse.json(result);
     } catch (error) {
-        console.error("Cron sync failed:", error);
+        Logger.error("Cron sync failed:", error);
         return NextResponse.json(
             { error: "Internal Server Error" },
             { status: 500 }

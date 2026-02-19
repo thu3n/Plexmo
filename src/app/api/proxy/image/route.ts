@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyToken } from "@/lib/jwt";
+import { Logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
     // Security Check: Ensure user is logged in
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
         });
 
     } catch (e: any) {
-        console.error("Proxy Error:", e);
+        Logger.error("Proxy Error:", e);
         return new NextResponse("Internal Server Error", { status: 500 });
     }
 }

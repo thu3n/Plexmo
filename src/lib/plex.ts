@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { getSetting } from "./settings";
+import { Logger } from "./logger";
 
 const VIDEO_QUALITY_PROFILES: Record<number, string> = {
   20000: "20 Mbps 1080p",
@@ -34,22 +35,65 @@ const VIDEO_RESOLUTION_OVERRIDES: Record<string, string> = {
   "sd": "SD",
 };
 
-type RawPart = {
+export interface PlexStream {
+  id?: string;
+  streamType?: string | number;
+  selected?: string | number | boolean;
   decision?: string;
-  Stream?: RawStream | RawStream[];
+  codec?: string;
+  displayTitle?: string;
+  title?: string;
+  bitrate?: string | number;
+  height?: string | number;
+  width?: string | number;
+  channels?: string | number;
+  audioChannelLayout?: string;
   [key: string]: unknown;
-};
+}
 
-type RawMedia = {
-  Part?: RawPart | RawPart[];
+export interface PlexPart {
+  id?: string;
+  decision?: string;
+  Stream?: PlexStream | PlexStream[];
+  selected?: boolean | string;
+  [key: string]: unknown;
+}
+
+export interface PlexMedia {
+  id?: string;
+  Part?: PlexPart | PlexPart[];
   videoResolution?: string;
   height?: string | number;
   bitrate?: string | number;
+  container?: string;
+  videoCodec?: string;
+  audioCodec?: string;
+  audioChannels?: string | number;
+  selected?: boolean;
   [key: string]: unknown;
-};
+}
 
-type RawVideo = {
-  Media?: RawMedia | RawMedia[];
+export interface PlexMetadata {
+  ratingKey?: string;
+  key?: string;
+  guid?: string;
+  type?: string;
+  title?: string;
+  originalTitle?: string;
+  grandparentTitle?: string;
+  parentTitle?: string;
+  summary?: string;
+  tagline?: string;
+  thumb?: string;
+  parentThumb?: string;
+  grandparentThumb?: string;
+  parentIndex?: string | number;
+  index?: string | number;
+  year?: string | number;
+  duration?: string | number;
+  viewOffset?: string | number;
+  live?: string;
+  Media?: PlexMedia | PlexMedia[];
   TranscodeSession?: {
     videoDecision?: string;
     audioDecision?: string;
@@ -62,8 +106,6 @@ type RawVideo = {
     transcodeHwRequested?: string | number;
     transcodeHwDecoding?: string;
     transcodeHwEncoding?: string;
-    transcodeHwDecodingTitle?: string;
-    transcodeHwEncodingTitle?: string;
     throttled?: string | number;
     speed?: string | number;
     progress?: string | number;
@@ -72,65 +114,42 @@ type RawVideo = {
   Session?: { bandwidth?: string | number; location?: string; id?: string };
   Player?: { platform?: string; product?: string; title?: string; state?: string; address?: string; remotePublicAddress?: string; local?: string | number; relayed?: string | number; secure?: string | number };
   User?: { title?: string; thumb?: string; id?: string; username?: string };
-  ratingKey?: string;
-  key?: string;
-  summary?: string;
-  tagline?: string;
-  grandparentTitle?: string;
-  parentTitle?: string;
-  title?: string;
-  duration?: string | number;
-  viewOffset?: string | number;
-  thumb?: string;
-  parentThumb?: string; // Season poster
-  grandparentThumb?: string; // Series poster
-  parentIndex?: string | number; // Season number
-  index?: string | number; // Episode number
-  live?: string; // "1" if live TV
+  Guid?: { id: string }[];
+  Directory?: PlexMetadata[];
+  Video?: PlexMetadata[];
+  Track?: PlexMetadata[];
   [key: string]: unknown;
-};
+}
 
-type RawStream = {
-  id?: string;
-  streamType?: string | number; // 1=Video, 2=Audio, 3=Subtitle
-  selected?: string | number;
-  decision?: string;
-  codec?: string;
-  displayTitle?: string;
-  title?: string;
-  bitrate?: string | number;
-  height?: string | number;
-  width?: string | number;
-  channels?: string | number;
-  audioChannelLayout?: string;
-  [key: string]: unknown;
-};
-
-type RawDirectory = {
-  key?: string;
-  title?: string;
-  type?: string;
-  agent?: string;
-  location?: string;
-  childCount?: string | number;
-  leafCount?: string | number;
-  refreshing?: string | number;
-  [key: string]: unknown;
-};
-
-type RawSessionsResponse = {
-  MediaContainer?: {
+export interface PlexMediaContainer<T = PlexMetadata> {
+  MediaContainer: {
     size?: string | number;
-    friendlyName?: string;
-    Video?: RawVideo | RawVideo[];
+    friendlyName?: string; // Server Name
+    Directory?: T | T[];
+    Video?: T | T[];
+    Track?: T | T[];
+    User?: PlexUserRaw | PlexUserRaw[];
+    [key: string]: unknown;
   };
-};
+}
 
-type RawLibrariesResponse = {
-  MediaContainer?: {
-    Directory?: RawDirectory | RawDirectory[];
-  };
-};
+export interface PlexUserRaw {
+  id: string;
+  title?: string;
+  username?: string;
+  email: string;
+  thumb: string;
+  filterAll: string;
+  filterMovies: string;
+  filterMusic: string;
+  filterPhotos: string;
+  filterTelevision: string;
+  [key: string]: unknown;
+}
+
+// Legacy alias for compatibility with existing code during refactor
+type RawVideo = PlexMetadata;
+type RawSessionsResponse = PlexMediaContainer<PlexMetadata>;
 
 export type PlexServerConfig = {
   id?: string;
@@ -365,9 +384,9 @@ const formatTitle = (video: RawVideo) => {
 export const fetchItemMetadata = async (
   ratingKey: string,
   server?: PlexServerConfig
-): Promise<any> => {
+): Promise<PlexMetadata | null> => {
   try {
-    const xml = (await plexFetch(`/library/metadata/${ratingKey}`, {}, server)) as any;
+    const xml = (await plexFetch(`/library/metadata/${ratingKey}`, {}, server)) as PlexMediaContainer;
     const container = xml.MediaContainer ?? {};
     const video = toArray(container.Video)[0] || toArray(container.Directory)[0] || toArray(container.Track)[0]; // Track for music
 
@@ -381,9 +400,9 @@ export const fetchItemMetadata = async (
       if (video.tagline) video.tagline = decodePlexString(video.tagline);
     }
 
-    return video;
+    return video ?? null;
   } catch (e) {
-    console.error(`Failed to fetch metadata for ${ratingKey}`, e);
+    Logger.error(`Failed to fetch metadata for ${ratingKey}`, e);
     return null;
   }
 };
@@ -391,14 +410,14 @@ export const fetchItemMetadata = async (
 export const fetchMetadataChildren = async (
   ratingKey: string,
   server?: PlexServerConfig
-): Promise<any[]> => {
+): Promise<PlexMetadata[]> => {
   try {
-    const xml = (await plexFetch(`/library/metadata/${ratingKey}/children`, {}, server)) as any;
+    const xml = (await plexFetch(`/library/metadata/${ratingKey}/children`, {}, server)) as PlexMediaContainer;
     const container = xml.MediaContainer ?? {};
     // Children can be Directory (Seasons) or Video (Episodes)
     const children = toArray(container.Directory).concat(toArray(container.Video));
 
-    return children.map((item: any) => ({
+    return children.map((item) => ({
       ...item,
       title: decodePlexString(item.title),
       summary: decodePlexString(item.summary),
@@ -406,7 +425,7 @@ export const fetchMetadataChildren = async (
       grandparentTitle: decodePlexString(item.grandparentTitle),
     }));
   } catch (e) {
-    console.error(`Failed to fetch children for ${ratingKey}`, e);
+    Logger.error(`Failed to fetch children for ${ratingKey}`, e);
     return [];
   }
 };
@@ -436,7 +455,7 @@ export const fetchSessions = async (
   // Fetch metadata for all sessions in parallel to avoid waterfalls
   // We need metadata to get the TRUE original file details (container, codecs, etc.)
   // because /status/sessions often reports the temporary transcode target as the source.
-  const metadataMap = new Map<string, any>();
+  const metadataMap = new Map<string, PlexMetadata>();
   await Promise.all(
     videos.map(async (video) => {
       const key = video.ratingKey;
@@ -459,29 +478,29 @@ export const fetchSessions = async (
     const metadata = metadataMap.get(video.ratingKey as string) || video;
 
     // 1. Identify Session Streams (What is actually playing/transcoding)
-    const sessionMedia = toArray(video.Media).find((m: any) => m.selected) || toArray(video.Media)[0];
-    const sessionPart = toArray(sessionMedia?.Part).find((p: any) => p.selected) || toArray(sessionMedia?.Part)[0];
+    const sessionMedia = toArray(video.Media).find((m) => m.selected) || toArray(video.Media)[0];
+    const sessionPart = toArray(sessionMedia?.Part).find((p) => p.selected) || toArray(sessionMedia?.Part)[0];
 
-    const sessionVideoStream = toArray(sessionPart?.Stream).find((s: any) => s.streamType === "1");
+    const sessionVideoStream = toArray(sessionPart?.Stream).find((s) => s.streamType === "1");
     const sessionAudioStream =
-      toArray(sessionPart?.Stream).find((s: any) => s.streamType === "2" && (s.selected === "1" || s.selected === true)) ||
-      toArray(sessionPart?.Stream).find((s: any) => s.streamType === "2");
+      toArray(sessionPart?.Stream).find((s) => s.streamType === "2" && (s.selected === "1" || s.selected === true)) ||
+      toArray(sessionPart?.Stream).find((s) => s.streamType === "2");
     const sessionSubtitleStream =
-      toArray(sessionPart?.Stream).find((s: any) => s.streamType === "3" && (s.selected === "1" || s.selected === true));
+      toArray(sessionPart?.Stream).find((s) => s.streamType === "3" && (s.selected === "1" || s.selected === true));
 
     // 2. Identify Original Streams (Source file details from Metadata)
     // We try to match by ID first (most accurate), then fallback to streamType/Index types.
     const metaMedias = toArray(metadata.Media);
     // Find the media that matches the session media ID if possible, or just the main one
-    const originalMedia = metaMedias.find((m: any) => m.id === sessionMedia?.id) || metaMedias.find((m: any) => m.selected) || metaMedias[0];
-    const originalPart = toArray(originalMedia?.Part).find((p: any) => p.id === sessionPart?.id) || toArray(originalMedia?.Part).find((p: any) => p.selected) || toArray(originalMedia?.Part)[0];
+    const originalMedia = metaMedias.find((m) => m.id === sessionMedia?.id) || metaMedias.find((m) => m.selected) || metaMedias[0];
+    const originalPart = toArray(originalMedia?.Part).find((p) => p.id === sessionPart?.id) || toArray(originalMedia?.Part).find((p) => p.selected) || toArray(originalMedia?.Part)[0];
 
     const metaStreams = toArray(originalPart?.Stream);
 
     // MATCHING LOGIC: Match Session Stream ID -> Metadata Stream ID
-    const originalVideoStream = sessionVideoStream ? (metaStreams.find((s: any) => s.id === sessionVideoStream.id) || metaStreams.find((s: any) => s.streamType === "1")) : undefined;
-    const originalAudioStream = sessionAudioStream ? (metaStreams.find((s: any) => s.id === sessionAudioStream.id) || metaStreams.find((s: any) => s.streamType === "2" && s.selected)) : undefined;
-    const originalSubtitleStream = sessionSubtitleStream ? (metaStreams.find((s: any) => s.id === sessionSubtitleStream.id) || metaStreams.find((s: any) => s.streamType === "3" && s.selected)) : undefined;
+    const originalVideoStream = sessionVideoStream ? (metaStreams.find((s) => s.id === sessionVideoStream.id) || metaStreams.find((s) => s.streamType === "1")) : undefined;
+    const originalAudioStream = sessionAudioStream ? (metaStreams.find((s) => s.id === sessionAudioStream.id) || metaStreams.find((s) => s.streamType === "2" && s.selected)) : undefined;
+    const originalSubtitleStream = sessionSubtitleStream ? (metaStreams.find((s) => s.id === sessionSubtitleStream.id) || metaStreams.find((s) => s.streamType === "3" && s.selected)) : undefined;
 
     // 3. Determine Decisions (Tautulli Logic)
     const normalize = (d?: string) => {
@@ -714,7 +733,7 @@ export const fetchLibraries = async (
       // Try to sync fresh data
       return await syncLibraries(server);
     } catch (e) {
-      console.warn(`[Plex] Failed to sync libraries for ${server.name}, falling back to DB.`);
+      Logger.warn(`[Plex] Failed to sync libraries for ${server.name}, falling back to DB.`);
       // Fallback to DB
       return await getLibraries(server.id);
     }
@@ -774,10 +793,10 @@ export const fetchPlexUsers = async (
 ): Promise<PlexUser[]> => {
   const { baseUrl, token } = resolveServer(server);
 
-  const parseUsers = (xml: any) => {
+  const parseUsers = (xml: PlexMediaContainer<PlexUserRaw>): PlexUser[] => {
     const container = xml.MediaContainer ?? {};
     const users = toArray(container.User);
-    return users.map((u: any) => ({
+    return users.map((u) => ({
       id: u.id,
       title: decodePlexString(u.title),
       username: decodePlexString(u.username),
@@ -825,12 +844,12 @@ export const fetchPlexUsers = async (
         }
       }
     } catch (e) {
-      console.error("Failed to fetch owner info:", e);
+      Logger.error("Failed to fetch owner info:", e);
     }
 
     // 1. Try Local Server
     try {
-      const xml = (await plexFetch("/users", {}, server)) as any;
+      const xml = (await plexFetch("/users", {}, server)) as PlexMediaContainer<PlexUserRaw>;
       const users = parseUsers(xml);
       if (users.length > 0) {
         // Merge avoiding duplicates (in case owner is in the list, though unlikely for /users)
@@ -853,7 +872,7 @@ export const fetchPlexUsers = async (
     if (!res.ok) throw new Error(`Cloud fetch failed: ${res.status}`);
 
     const text = await res.text();
-    const xml = parser.parse(text);
+    const xml = parser.parse(text) as PlexMediaContainer<PlexUserRaw>;
     const cloudUsers = parseUsers(xml);
 
     // Merge
@@ -867,7 +886,7 @@ export const fetchPlexUsers = async (
     return allUsers;
 
   } catch (error) {
-    console.error(`Failed to fetch users for ${server?.name}:`, error);
+    Logger.error(`Failed to fetch users for ${server?.name}:`, error);
     return [];
   }
 };
@@ -897,7 +916,7 @@ export const terminateSession = async (
 
     return true;
   } catch (error) {
-    console.error("Failed to terminate session:", error);
+    Logger.error("Failed to terminate session:", error);
     throw error;
   }
 };

@@ -3,6 +3,7 @@ import { getLibraries, syncLibraryItems } from "@/lib/libraries";
 import { getServerById } from "@/lib/servers";
 import { resolveServer } from "@/lib/plex";
 import { createJob } from "@/lib/jobs";
+import { Logger } from "@/lib/logger";
 
 export async function GET() {
     // 1. Get a library
@@ -29,7 +30,7 @@ export async function GET() {
     const job = createJob('sync_library', lib.key);
 
     // 5. Sync
-    console.log("Starting test sync for", lib.title);
+    Logger.info("Starting test sync for", lib.title);
     // await for test purposes to see result immediately
     await syncLibraryItems(serverConfig, lib.key, job.id);
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserRuleHistory } from "@/lib/rules";
 import { db } from "@/lib/db";
+import { Logger } from "@/lib/logger";
 
 export async function GET(request: Request, { params }: { params: Promise<{ username: string }> }) {
     try {
@@ -18,7 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ user
         const history = getUserRuleHistory(user.id);
         return NextResponse.json(history);
     } catch (error) {
-        console.error("Failed to fetch user rule history:", error);
+        Logger.error("Failed to fetch user rule history:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
