@@ -6,9 +6,18 @@
 > is green, and the dev server compiles. The rules modal was manually verified in
 > the running app — create/edit/save works for every rule type with no errors.
 > Commits: `18cd84c` (rules), `9b3d302`
-> (plex), `dcd767f` (RuleModal), `a854528` (rules-schedule extraction). The
-> optional secondary targets (`tautulli/api/route.ts`, `settings/import/page.tsx`,
-> `setup/page.tsx`) and the `user_stats.ts` `as any` cleanup below remain pending.
+> (plex), `dcd767f` (RuleModal), `a854528` (rules-schedule extraction).
+>
+> **The secondary targets and the `user_stats.ts` cleanup are now ALSO done**
+> (2026-05-27). `tautulli/api/route.ts` (668→35, HTTP-only) → `lib/tautulli-import.ts`
+> + `lib/tautulli-client.ts`; `settings/import/page.tsx` (666→328) →
+> `features/settings/components/import/*`; `setup/page.tsx` (571→355) →
+> `features/setup/components/*`; and the 4 `user_stats.ts` `as any` casts replaced
+> with a `PeriodStatsRow` projection. Commits: `d4c934e` (user_stats), `89924a9`
+> (tautulli), `506500d` (import page), `0fb02f0` (setup page). All files under
+> ~500 lines; tsc/vitest/dev-compile verified. One probable pre-existing bug
+> surfaced and left untouched: the import page renders two stats modals at once
+> (inline + portal) when `showDetails` is true.
 >
 > Items #1–#3 of the database rehaul were already done (see "Context" below).
 
