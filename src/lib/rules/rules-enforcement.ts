@@ -1,346 +1,18 @@
-import { db } from "./db";
-import { listInternalServers } from "./servers";
-import { terminateSession, PlexSession, PlexServerConfig } from "./plex";
-import { sendSessionTerminatedNotification, sendDiscordNotification } from "./discord";
-import { Logger } from "./logger";
-
-// --- Types ---
-
-export interface RuleInstance {
-    id: string;
-    type: string;
-    name: string;
-    enabled: boolean;
-    settings: {
-        limit: number;
-        enforce: boolean;
-        kill_all: boolean;
-        message: string;
-        notify?: boolean;
-        exclude_same_ip?: boolean;
-        // Scheduled Access settings
-        schedule?: {
-            type: 'block' | 'allow';  // Block during these hours, or only allow during these hours
-            timeWindows: Array<{
-                startTime: string;    // "22:00" format (HH:mm)
-                endTime: string;      // "07:00" format (HH:mm)
-                days: number[];       // 0=Sunday, 1=Monday, ..., 6=Saturday
-            }>;
-            timezone?: string;        // Optional, defaults to server timezone
-            graceMinutes?: number;    // Minutes of warning before enforcement (future feature)
-        };
-    };
-    discordWebhookId: string | null; // Deprecated
-    discordWebhookIds?: string[];
-    createdAt: string;
-    global?: boolean;
-    userNames?: string[];
-    serverNames?: string[];
-    userCount?: number;
-    serverCount?: number;
-}
-
-interface RuleInstanceRow {
-    id: string;
-    type: string;
-    name: string;
-    enabled: number; // SQLite stores booleans as 0/1
-    settings: string; // JSON string
-    discordWebhookIds: string; // JSON string or text
-    discordWebhookId: string | null; // Legacy
-    createdAt: string;
-}
-
-interface RuleUserRow {
-    userId: string;
-    username: string;
-}
-
-interface RuleServerRow {
-    serverId: string;
-    name: string;
-}
-
-// --- CRUD ---
-
-export const getRuleInstances = (): RuleInstance[] => {
-    try {
-        const rows = db.prepare("SELECT * FROM rule_instances").all() as RuleInstanceRow[];
-        return rows.map(r => {
-            // Fetch assigned server names
-            const servers = db.prepare(`
-                SELECT s.name 
-                FROM servers s
-                JOIN server_rules sr ON s.id = sr.serverId
-                WHERE sr.ruleKey = ?
-            `).all(r.id) as { name: string }[];
-            const serverNames = servers.map(s => s.name);
-
-            const serverCountResult = db.prepare("SELECT COUNT(*) as count FROM server_rules WHERE ruleKey = ?").get(r.id) as { count: number };
-            const serverCount = serverCountResult.count;
-
-            // Fetch assigned user names (limit 5 for preview)
-            const users = db.prepare(`
-                SELECT u.username 
-                FROM users u
-                JOIN user_rules ur ON u.id = ur.userId
-                WHERE ur.ruleKey = ?
-                LIMIT 5
-            `).all(r.id) as { username: string }[];
-            const userNames = users.map(u => u.username);
-
-            // Get total user count
-            const userCountResult = db.prepare("SELECT COUNT(*) as count FROM user_rules WHERE ruleKey = ?").get(r.id) as { count: number };
-            const userCount = userCountResult.count;
-
-            const isGlobal = userCount === 0 && serverCount === 0;
-
-            let ids: string[] = [];
-            try {
-                if (r.discordWebhookIds) {
-                    ids = JSON.parse(r.discordWebhookIds);
-                } else if (r.discordWebhookId) {
-                    // Fallback for non-migrated runtime read
-                    ids = [r.discordWebhookId];
-                }
-            } catch (e) { }
-
-            return {
-                ...r,
-                enabled: r.enabled === 1,
-                settings: JSON.parse(r.settings),
-                discordWebhookIds: ids,
-                discordWebhookId: null, // Ensure frontend doesn't rely on legacy field
-                global: isGlobal,
-                userCount,
-                serverCount,
-                userNames,
-                serverNames
-            };
-        });
-    } catch (error) {
-        Logger.error("Failed to fetch rule instances:", error);
-        return [];
-    }
-};
-
-export const getRuleInstance = (id: string): RuleInstance | undefined => {
-    try {
-        const row = db.prepare("SELECT * FROM rule_instances WHERE id = ?").get(id) as RuleInstanceRow | undefined;
-        if (!row) return undefined;
-
-        const userCountResult = db.prepare("SELECT COUNT(*) as count FROM user_rules WHERE ruleKey = ?").get(id) as { count: number };
-        const serverCountResult = db.prepare("SELECT COUNT(*) as count FROM server_rules WHERE ruleKey = ?").get(id) as { count: number };
-
-        const userCount = userCountResult.count;
-        const serverCount = serverCountResult.count;
-        const isGlobal = userCount === 0 && serverCount === 0;
-
-        let ids: string[] = [];
-        try {
-            if (row.discordWebhookIds) ids = JSON.parse(row.discordWebhookIds);
-            else if (row.discordWebhookId) ids = [row.discordWebhookId];
-        } catch (e) { }
-
-        return {
-            ...row,
-            enabled: row.enabled === 1,
-            settings: JSON.parse(row.settings),
-            discordWebhookIds: ids,
-            discordWebhookId: null, // Ensure frontend doesn't rely on legacy field
-            global: isGlobal,
-            userCount,
-            serverCount
-        };
-    } catch (error) {
-        Logger.error(`Failed to fetch rule instance ${id}:`, error);
-        return undefined;
-    }
-};
-
-export const createRuleInstance = (instance: Omit<RuleInstance, "createdAt">, assignments?: { userIds?: string[], serverIds?: string[] }) => {
-    const createdAt = new Date().toISOString();
-    try {
-        db.transaction(() => {
-            // We write to both for compatibility if needed, but prefer new column
-            // Actually, let's just write to new column. 
-            // Old column can be null.
-            const webhookIds = JSON.stringify(instance.discordWebhookIds || []);
-
-            db.prepare(`
-                INSERT INTO rule_instances (id, type, name, enabled, settings, discordWebhookIds, createdAt)
-                VALUES (@id, @type, @name, @enabled, @settings, @discordWebhookIds, @createdAt)
-            `).run({
-                ...instance,
-                enabled: instance.enabled ? 1 : 0,
-                settings: JSON.stringify(instance.settings),
-                discordWebhookIds: webhookIds,
-                createdAt
-            });
-
-            if (assignments?.userIds) {
-                const stmt = db.prepare("INSERT INTO user_rules (userId, ruleKey) VALUES (?, ?)");
-                for (const userId of assignments.userIds) {
-                    stmt.run(userId, instance.id);
-                }
-            }
-
-            if (assignments?.serverIds) {
-                const stmt = db.prepare("INSERT INTO server_rules (serverId, ruleKey) VALUES (?, ?)");
-                for (const serverId of assignments.serverIds) {
-                    stmt.run(serverId, instance.id);
-                }
-            }
-        })();
-    } catch (error) {
-        Logger.error("Failed to create rule instance:", error);
-        throw error;
-    }
-};
-
-export const updateRuleInstance = (instance: RuleInstance) => {
-    try {
-        const webhookIds = JSON.stringify(instance.discordWebhookIds || []);
-        db.prepare(`
-            UPDATE rule_instances 
-            SET name = @name, enabled = @enabled, settings = @settings, discordWebhookIds = @discordWebhookIds
-            WHERE id = @id
-        `).run({
-            ...instance,
-            enabled: instance.enabled ? 1 : 0,
-            settings: JSON.stringify(instance.settings),
-            discordWebhookIds: webhookIds
-        });
-    } catch (error) {
-        Logger.error("Failed to update rule instance:", error);
-        throw error;
-    }
-};
-
-export const deleteRuleInstance = (id: string) => {
-    try {
-        db.transaction(() => {
-            db.prepare("DELETE FROM rule_instances WHERE id = ?").run(id);
-            db.prepare("DELETE FROM user_rules WHERE ruleKey = ?").run(id);
-            db.prepare("DELETE FROM server_rules WHERE ruleKey = ?").run(id);
-        })();
-    } catch (error) {
-        Logger.error("Failed to delete rule instance:", error);
-        throw error;
-    }
-};
-
-// --- Assignments ---
-
-export const getRuleUsers = (ruleId: string): { userId: string; username: string; email: string; serverNames: string; enabled: boolean }[] => {
-    try {
-        const users = db.prepare(`
-            SELECT u.id, u.username, u.email, GROUP_CONCAT(s.name, ', ') as serverNames
-            FROM users u
-            LEFT JOIN servers s ON u.serverId = s.id
-            GROUP BY u.id, u.username, u.email
-        `).all() as { id: string, username: string, email: string, serverNames: string | null }[];
-
-        const assignedUserIds = new Set(
-            (db.prepare("SELECT userId FROM user_rules WHERE ruleKey = ?").all(ruleId) as { userId: string }[]).map(r => r.userId)
-        );
-
-        return users.map(u => ({
-            userId: u.id,
-            username: u.username,
-            email: u.email,
-            serverNames: u.serverNames || '',
-            enabled: assignedUserIds.has(u.id)
-        }));
-    } catch (error) {
-        Logger.error(`Failed to fetch users for rule ${ruleId}:`, error);
-        return [];
-    }
-};
-
-export const toggleUserRule = (userId: string, ruleId: string, enabled: boolean): void => {
-    try {
-        if (enabled) {
-            db.prepare("INSERT OR IGNORE INTO user_rules (userId, ruleKey) VALUES (?, ?)").run(userId, ruleId);
-        } else {
-            db.prepare("DELETE FROM user_rules WHERE userId = ? AND ruleKey = ?").run(userId, ruleId);
-        }
-    } catch (error) {
-        Logger.error(`Failed to toggle rule ${ruleId} for user ${userId}:`, error);
-        throw error;
-    }
-};
-
-export const getRuleServers = (ruleId: string): { serverId: string; name: string; enabled: boolean }[] => {
-    try {
-        const servers = db.prepare("SELECT id, name FROM servers").all() as { id: string, name: string }[];
-        const assignedServerIds = new Set(
-            (db.prepare("SELECT serverId FROM server_rules WHERE ruleKey = ?").all(ruleId) as { serverId: string }[]).map(r => r.serverId)
-        );
-
-        return servers.map(s => ({
-            serverId: s.id,
-            name: s.name,
-            enabled: assignedServerIds.has(s.id)
-        }));
-    } catch (error) {
-        Logger.error(`Failed to fetch servers for rule ${ruleId}:`, error);
-        return [];
-    }
-};
-
-export const toggleServerRule = (serverId: string, ruleId: string, enabled: boolean): void => {
-    try {
-        if (enabled) {
-            db.prepare("INSERT OR IGNORE INTO server_rules (serverId, ruleKey) VALUES (?, ?)").run(serverId, ruleId);
-        } else {
-            db.prepare("DELETE FROM server_rules WHERE serverId = ? AND ruleKey = ?").run(serverId, ruleId);
-        }
-    } catch (error) {
-        Logger.error(`Failed to toggle rule ${ruleId} for server ${serverId}:`, error);
-        throw error;
-    }
-};
-
-// --- Logging & Enforcement ---
-
-export const logRuleEvent = (userId: string, ruleInstanceId: string, details: string) => {
-    try {
-        db.prepare("INSERT INTO rule_events (userId, ruleKey, triggeredAt, details) VALUES (?, ?, ?, ?)").run(
-            userId,
-            ruleInstanceId,
-            new Date().toISOString(),
-            details
-        );
-    } catch (error) {
-        Logger.error("Failed to log rule event:", error);
-    }
-};
-
-
-export const closeRuleEvent = (id: number) => {
-    try {
-        db.prepare("UPDATE rule_events SET endedAt = ? WHERE id = ?").run(new Date().toISOString(), id);
-    } catch (error) {
-        Logger.error(`Failed to close rule event ${id}:`, error);
-    }
-};
-
-export const deleteRuleEvent = (id: number) => {
-    try {
-        db.prepare("DELETE FROM rule_events WHERE id = ?").run(id);
-    } catch (error) {
-        Logger.error(`Failed to delete rule event ${id}:`, error);
-    }
-};
-
-export const updateRuleEventDetails = (id: number, details: string) => {
-    try {
-        db.prepare("UPDATE rule_events SET details = ? WHERE id = ?").run(details, id);
-    } catch (error) {
-        Logger.error(`Failed to update rule event details ${id}:`, error);
-    }
-};
+import { db } from "../db";
+import { listInternalServers } from "../servers";
+import { terminateSession, PlexSession, PlexServerConfig } from "../plex";
+import { sendSessionTerminatedNotification } from "../discord";
+import { Logger } from "../logger";
+import type { RuleInstance } from "@/features/rules/types";
+import { getRuleInstances } from "./rules-crud";
+import {
+    getRuleUsers,
+    getRuleServers,
+    logRuleEvent,
+    closeRuleEvent,
+    deleteRuleEvent,
+    updateRuleEventDetails,
+} from "./rules-assignments";
 
 // --- Schedule Helper Functions ---
 
@@ -390,7 +62,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
     try {
         const instances = getRuleInstances();
         // Load servers once if needed
-        let serverConfigMap: Map<string, PlexServerConfig> = new Map();
+        const serverConfigMap: Map<string, PlexServerConfig> = new Map();
 
 
         // Cache server configs if enforcement is needed anywhere
@@ -475,7 +147,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
 
                             // If not paused in DB...
                             if (!activeSession?.pausedSince) {
-                                // ...BUT if the session is currently paused in the LIVE API response, 
+                                // ...BUT if the session is currently paused in the LIVE API response,
                                 // it means the DB sync might be lagging or failed to update.
                                 // In this case, we TRUST the live session and DO NOT delete the event.
                                 if (currentSession.state === 'paused') {
@@ -523,7 +195,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                             };
 
                             let openEvent = db.prepare(`
-                                SELECT id, details FROM rule_events 
+                                SELECT id, details FROM rule_events
                                 WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL AND details LIKE ?
                             `).get(user.userId, instance.id, `%${session.id}%`) as { id: number, details: string } | undefined;
 
@@ -531,7 +203,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                                 logRuleEvent(user.userId, instance.id, JSON.stringify(violationDetailsObj));
                                 // Fetch it back to have the ID if we need to update it immediately
                                 openEvent = db.prepare(`
-                                        SELECT id, details FROM rule_events 
+                                        SELECT id, details FROM rule_events
                                     WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL AND details LIKE ?
                                 `).get(user.userId, instance.id, `%${session.id}%`) as { id: number, details: string } | undefined;
                             } else {
@@ -539,7 +211,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                                 try {
                                     const d = JSON.parse(openEvent.details);
                                     if (d.enforced) {
-                                        // Already enforced, waiting for session to die. 
+                                        // Already enforced, waiting for session to die.
                                         // DO NOT re-terminate.
                                         continue;
                                     }
@@ -618,7 +290,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
 
                     if (isBlocked && userSessions.length > 0) {
                         let openEvent = db.prepare(`
-                            SELECT id, details FROM rule_events 
+                            SELECT id, details FROM rule_events
                             WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
                         `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
 
@@ -633,7 +305,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                                 enforced: false
                             }));
                             openEvent = db.prepare(`
-                                SELECT id, details FROM rule_events 
+                                SELECT id, details FROM rule_events
                                 WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
                             `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
                         } else {
@@ -694,7 +366,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                     } else if (!isBlocked) {
                         // Close any open events if user is no longer blocked
                         const openEvent = db.prepare(`
-                            SELECT id FROM rule_events 
+                            SELECT id FROM rule_events
                             WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
                         `).get(user.userId, instance.id) as { id: number } | undefined;
 
@@ -712,7 +384,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                     const isViolating = count > limit;
 
                     let openEvent = db.prepare(`
-                        SELECT id, details FROM rule_events 
+                        SELECT id, details FROM rule_events
                         WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
                     `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
 
@@ -750,7 +422,7 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
                                 enforced: false
                             }));
                             openEvent = db.prepare(`
-                                SELECT id, details FROM rule_events 
+                                SELECT id, details FROM rule_events
                                 WHERE userId = ? AND ruleKey = ? AND endedAt IS NULL
                             `).get(user.userId, instance.id) as { id: number, details: string } | undefined;
                         } else {
@@ -829,89 +501,5 @@ export const checkAndLogViolations = async (sessions: PlexSession[]) => {
         }
     } catch (e) {
         Logger.error("Error checking rule violations:", e);
-    }
-};
-
-interface RuleEventRow {
-    id: number;
-    userId: string;
-    ruleKey: string;
-    triggeredAt: string;
-    endedAt: string | null;
-    details: string;
-    ruleName: string | null;
-    ruleType: string | null;
-}
-
-export const getUserRuleHistory = (userId: string) => {
-    try {
-        const events = db.prepare(`
-        SELECT re.*, ri.name as ruleName, ri.type as ruleType
-        FROM rule_events re
-        LEFT JOIN rule_instances ri ON re.ruleKey = ri.id
-        WHERE re.userId = ?
-        ORDER BY re.triggeredAt DESC
-    `).all(userId) as RuleEventRow[];
-
-        return events.map(e => {
-            let details = {};
-            try {
-                details = JSON.parse(e.details);
-            } catch (err) { }
-            return {
-                ...e,
-                details
-            };
-        });
-    } catch (error) {
-        Logger.error(`Failed to get rule history for user ${userId}:`, error);
-        return [];
-    }
-};
-
-export const getGlobalRules = () => {
-    try {
-        const rules = db.prepare(`
-            SELECT r.* 
-            FROM rule_instances r
-            LEFT JOIN user_rules ur ON r.id = ur.ruleKey
-            LEFT JOIN server_rules sr ON r.id = sr.ruleKey
-            WHERE ur.userId IS NULL AND sr.serverId IS NULL
-            GROUP BY r.id
-        `).all() as RuleInstanceRow[];
-
-        return rules.map(r => ({
-            ...r,
-            enabled: r.enabled === 1,
-            settings: JSON.parse(r.settings)
-        }));
-    } catch (error) {
-        Logger.error("Failed to fetch global rules:", error);
-        return [];
-    }
-};
-
-export const getUserRules = (userId: string) => {
-    try {
-        const rules = db.prepare(`
-        SELECT ri.*
-        FROM rule_instances ri
-        JOIN user_rules ur ON ri.id = ur.ruleKey
-        WHERE ur.userId = ?
-    `).all(userId) as RuleInstanceRow[];
-
-        return rules.map(r => {
-            let settings = {};
-            try { settings = JSON.parse(r.settings); } catch (e) { }
-            return {
-                ...r,
-                key: r.id,
-                settings,
-                enabled: r.enabled === 1
-            };
-        });
-    } catch (error) {
-        Logger.error(`Failed to get user rules for ${userId}:`, error);
-        return [];
     }
 };
