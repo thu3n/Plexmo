@@ -3,7 +3,9 @@
 > **Status: DONE (2026-05-27).** All three primary targets split with zero
 > behavior change; `@/lib/rules`, `@/lib/plex`, and the RuleModal import path all
 > still resolve. `tsc` shows only the known stale `.next/types` errors, `vitest`
-> is green, and the dev server compiles. Commits: `18cd84c` (rules), `9b3d302`
+> is green, and the dev server compiles. The rules modal was manually verified in
+> the running app — create/edit/save works for every rule type with no errors.
+> Commits: `18cd84c` (rules), `9b3d302`
 > (plex), `dcd767f` (RuleModal), `a854528` (rules-schedule extraction). The
 > optional secondary targets (`tautulli/api/route.ts`, `settings/import/page.tsx`,
 > `setup/page.tsx`) and the `user_stats.ts` `as any` cleanup below remain pending.
