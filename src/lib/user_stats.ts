@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { HistoryEntry } from "./history";
+import type { UserRow } from "./db-types";
 
 export type UserStats = {
     global: {
@@ -18,6 +19,17 @@ export type UserStats = {
     recentlyPlayed: HistoryEntry[];
 };
 
+// Projection for the period/all-time aggregate queries below. SUM() returns NULL
+// when no rows match (call sites coalesce with `|| 0`), so duration is nullable.
+interface PeriodStatsRow {
+    count: number;
+    duration: number | null;
+}
+
+// Bind params for the user-scoped aggregate queries (period queries add `since`).
+type StatsParams = { username: string; userId: string };
+type PeriodStatsParams = StatsParams & { since: number };
+
 const getStreakActivity = db.prepare(`
     SELECT 
         strftime('%Y-%m-%d', datetime(h.startTime / 1000, 'unixepoch', 'localtime')) as date,
@@ -30,13 +42,13 @@ const getStreakActivity = db.prepare(`
     ORDER BY h.startTime ASC
 `);
 
-const getStatsForPeriod = db.prepare(`
+const getStatsForPeriod = db.prepare<PeriodStatsParams, PeriodStatsRow>(`
     SELECT COUNT(*) as count, SUM(duration) as duration
     FROM activity_history
     WHERE (user = @username OR userId = @userId) AND stopTime > @since
 `);
 
-const getAllTimeStats = db.prepare(`
+const getAllTimeStats = db.prepare<StatsParams, PeriodStatsRow>(`
     SELECT COUNT(*) as count, SUM(duration) as duration
     FROM activity_history
     WHERE (user = @username OR userId = @userId)
@@ -258,7 +270,7 @@ export const getUserStats = (username: string): UserStats => {
     // linking them via the 'users' table is best.
 
     // Check if we have a user with this username
-    const userMatch = db.prepare("SELECT * FROM users WHERE username = ? OR title = ?").get(username, username) as any;
+    const userMatch = db.prepare<[string, string], UserRow>("SELECT * FROM users WHERE username = ? OR title = ?").get(username, username);
 
     const userId = userMatch ? userMatch.id : "NO_MATCH_ID";
     // If we matched a user, we use their current Display Name as the primary "user" param for fallback, 
@@ -271,10 +283,10 @@ export const getUserStats = (username: string): UserStats => {
     const since7d = { ...params, since: now - (7 * oneDay) };
     const since30d = { ...params, since: now - (30 * oneDay) };
 
-    const stats24h = getStatsForPeriod.get(since24h) as any;
-    const stats7d = getStatsForPeriod.get(since7d) as any;
-    const stats30d = getStatsForPeriod.get(since30d) as any;
-    const statsAll = getAllTimeStats.get(params) as any;
+    const stats24h = getStatsForPeriod.get(since24h);
+    const stats7d = getStatsForPeriod.get(since7d);
+    const stats30d = getStatsForPeriod.get(since30d);
+    const statsAll = getAllTimeStats.get(params);
 
     const platforms = getPlatformStats.all(params) as { platform: string; count: number }[];
     const players = getPlayerStats.all(params) as { player: string; count: number }[];
@@ -301,10 +313,10 @@ export const getUserStats = (username: string): UserStats => {
 
     return {
         global: {
-            last24h: { count: stats24h.count || 0, duration: stats24h.duration || 0 },
-            last7d: { count: stats7d.count || 0, duration: stats7d.duration || 0 },
-            last30d: { count: stats30d.count || 0, duration: stats30d.duration || 0 },
-            allTime: { count: statsAll.count || 0, duration: statsAll.duration || 0 },
+            last24h: { count: stats24h?.count || 0, duration: stats24h?.duration || 0 },
+            last7d: { count: stats7d?.count || 0, duration: stats7d?.duration || 0 },
+            last30d: { count: stats30d?.count || 0, duration: stats30d?.duration || 0 },
+            allTime: { count: statsAll?.count || 0, duration: statsAll?.duration || 0 },
         },
         streaks,
         platforms,
