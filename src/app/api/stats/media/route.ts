@@ -1,7 +1,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
 import { plexFetch } from "@/lib/plex";
+import { getServerById } from "@/lib/servers";
+import { getHistoryBySourceKeys } from "@/lib/history";
 import { Logger } from "@/lib/logger";
 
 interface StatRequest {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
         // 1. Identify Primary Source (for metadata fetching)
         // We use the first source as primary for now.
         const primarySource = items.sources[0];
-        const server = db.prepare("SELECT * FROM servers WHERE id = ?").get(primarySource.serverId) as any;
+        const server = await getServerById(primarySource.serverId);
 
         if (!server) {
             return NextResponse.json({ error: "Server not found" }, { status: 404 });
@@ -57,16 +58,7 @@ export async function POST(req: NextRequest) {
             // Since we don't have GUIDs in history, we can only reliably match by ratingKey + serverId.
             // We can iterate all sources and sum them up!
 
-            const placeholders = items.sources.map(() => `(h.serverId = ? AND h.ratingKey = ?)`).join(' OR ');
-            const params = items.sources.flatMap(s => [s.serverId, s.ratingKey]);
-
-            const history = db.prepare(`
-                SELECT h.*, s.name as serverName
-                FROM activity_history h
-                LEFT JOIN servers s ON h.serverId = s.id
-                WHERE ${placeholders}
-                ORDER BY h.startTime DESC
-            `).all(...params) as any[];
+            const history = getHistoryBySourceKeys(items.sources) as any[];
 
             // Calculate Unique Plays (Same User + Same Movie + Same Day)
             const uniquePlayKeys = new Set();
@@ -93,7 +85,7 @@ export async function POST(req: NextRequest) {
         if (items.type === 'show') {
             // Fetch episodes from ALL sources in parallel
             const sourcePromises = items.sources.map(async (source) => {
-                const srcServer = db.prepare("SELECT * FROM servers WHERE id = ?").get(source.serverId) as any;
+                const srcServer = await getServerById(source.serverId);
                 if (!srcServer) return [];
 
                 try {
@@ -123,19 +115,10 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ type: 'show', stats: { totalPlays: 0, uniqueUsers: 0, seasons: [], episodeCount: 0, watchedEpisodeCount: 0 } });
             }
 
-            // Collect all ratingKeys for history query
-            const allRatingKeys = allEpisodes.map(e => e.ratingKey);
-            // We need to query by (serverId, ratingKey) pairs
-            const placeholders = allEpisodes.map(() => '(h.serverId = ? AND h.ratingKey = ?)').join(' OR ');
-            const params = allEpisodes.flatMap(e => [e.serverId, e.ratingKey]);
-
-            const history = db.prepare(`
-                SELECT h.*, s.name as serverName 
-                FROM activity_history h
-                LEFT JOIN servers s ON h.serverId = s.id
-                WHERE ${placeholders}
-                ORDER BY h.startTime DESC
-            `).all(...params) as any[];
+            // Query history by (serverId, ratingKey) pairs across all sources.
+            const history = getHistoryBySourceKeys(
+                allEpisodes.map(e => ({ serverId: e.serverId, ratingKey: e.ratingKey }))
+            ) as any[];
 
             // Aggregate by Season/Episode Index
             // Map key: "S{season}-E{episode}"

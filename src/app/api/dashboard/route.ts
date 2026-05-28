@@ -1,5 +1,5 @@
 import { getDashboardSnapshot } from "@/lib/plex";
-import { getServerForDashboard } from "@/lib/servers";
+import { getServerForDashboard, listInternalServers } from "@/lib/servers";
 import { NextResponse } from "next/server";
 import { checkAndLogViolations } from "@/lib/rules";
 import { Logger } from "@/lib/logger";
@@ -40,8 +40,7 @@ export async function GET(request: Request) {
     }
 
     // Fetch ALL servers (Unified Dashboard)
-    const db = (await import("@/lib/db")).db;
-    const servers = db.prepare("SELECT * FROM servers").all() as any[];
+    const servers = await listInternalServers();
 
     if (!servers.length) {
       return NextResponse.json({

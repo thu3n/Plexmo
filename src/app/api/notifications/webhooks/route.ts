@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { getWebhooks } from "@/lib/discord";
+import { getWebhooks, createWebhook } from "@/lib/discord";
 import { Logger } from "@/lib/logger";
 
 export async function GET() {
@@ -21,14 +20,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid input" }, { status: 400 });
         }
 
-        const id = crypto.randomUUID();
-        const createdAt = new Date().toISOString();
-        const enabled = 1;
-
-        db.prepare(`
-            INSERT INTO discord_webhooks (id, name, url, events, enabled, createdAt)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(id, name, url, JSON.stringify(events), enabled, createdAt);
+        const id = createWebhook({ name, url, events });
 
         return NextResponse.json({ success: true, id });
     } catch (error) {

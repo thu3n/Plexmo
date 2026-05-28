@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getServerById } from "@/lib/servers";
 import { verifyToken } from "@/lib/jwt";
 import { Logger } from "@/lib/logger";
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const server = db.prepare("SELECT baseUrl, token FROM servers WHERE id = ?").get(serverId) as { baseUrl: string, token: string };
+        const server = await getServerById(serverId);
 
         if (!server) {
             return new NextResponse("Server not found", { status: 404 });

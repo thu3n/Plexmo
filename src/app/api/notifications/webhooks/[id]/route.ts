@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { updateWebhook, deleteWebhook } from "@/lib/discord";
 import { Logger } from "@/lib/logger";
 
 interface Props {
@@ -19,17 +19,7 @@ export async function PUT(request: Request, props: Props) {
             return NextResponse.json({ error: "Invalid input" }, { status: 400 });
         }
 
-        db.prepare(`
-            UPDATE discord_webhooks 
-            SET name = @name, url = @url, events = @events, enabled = @enabled
-            WHERE id = @id
-        `).run({
-            id,
-            name,
-            url,
-            events: JSON.stringify(events),
-            enabled: enabled ? 1 : 0
-        });
+        updateWebhook(id, { name, url, events, enabled });
 
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -42,7 +32,7 @@ export async function DELETE(request: Request, props: Props) {
     const params = await props.params;
     try {
         const { id } = params;
-        db.prepare("DELETE FROM discord_webhooks WHERE id = ?").run(id);
+        deleteWebhook(id);
         return NextResponse.json({ success: true });
     } catch (error) {
         return NextResponse.json({ error: "Failed to delete webhook" }, { status: 500 });

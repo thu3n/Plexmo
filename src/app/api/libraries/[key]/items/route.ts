@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLibraryItemsPaginated } from "@/lib/libraries";
-import { db } from "@/lib/db";
+import { getServerById } from "@/lib/servers";
 
 export async function GET(
     req: NextRequest,
@@ -62,7 +62,8 @@ export async function GET(
         });
 
         // Get server config for constructing image URLs
-        const server = db.prepare("SELECT baseUrl, token FROM servers WHERE id = ?").get(serverId) as { baseUrl: string, token: string };
+        const dbServer = await getServerById(serverId);
+        const server = dbServer ? { baseUrl: dbServer.baseUrl, token: dbServer.token } : null;
 
         return NextResponse.json({ items, totalCount, page, pageSize, server });
     } catch (error: any) {
