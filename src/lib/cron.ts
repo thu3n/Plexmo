@@ -3,6 +3,7 @@ import { syncHistory } from "@/lib/history";
 import { db } from "@/lib/db";
 import { getSetting, setSetting } from "@/lib/settings";
 import { runRetentionSweepIfDue } from "@/lib/retention";
+import { setServerSnapshot, markServerFailure } from "@/lib/dashboard-cache";
 import { sendSessionStartNotification, sendSessionStopNotification } from "./discord";
 import type { ServerRow, ConcurrentSnapshotRow, ActiveSessionRow } from "@/lib/db-types";
 // import parser from "cron-parser"; // Removed for dynamic import
@@ -47,6 +48,7 @@ export async function runCronJob() {
             servers.map(async (server) => {
                 try {
                     const snapshot = await getDashboardSnapshot(server);
+                    setServerSnapshot(server.id, snapshot);
                     const { newSessions, endedSessions } = syncHistory(server, snapshot.sessions);
 
                     // Send Notifications (Fire and forget to not block sync)
@@ -59,6 +61,8 @@ export async function runCronJob() {
 
                     return { server: server.name, status: "ok", sessions: snapshot.sessions };
                 } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    markServerFailure(server.id, message);
                     console.error(`Failed to sync server ${server.name}:`, err);
                     return { server: server.name, status: "error", error: String(err) };
                 }

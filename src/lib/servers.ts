@@ -14,6 +14,8 @@ export type PublicServer = {
   hasToken: boolean;
   maskedToken: string | null;
   color: string | null;
+  status?: "ok" | "unreachable";
+  statusMessage?: string;
 };
 
 export type ServerInput = {
