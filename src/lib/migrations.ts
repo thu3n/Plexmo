@@ -81,19 +81,6 @@ export const migrations: Migration[] = [
           pausedSince INTEGER
         );
 
-        CREATE TABLE libraries (
-          key TEXT NOT NULL,
-          title TEXT NOT NULL,
-          type TEXT,
-          agent TEXT,
-          count INTEGER DEFAULT 0,
-          refreshing INTEGER DEFAULT 0,
-          serverId TEXT NOT NULL,
-          serverName TEXT,
-          updatedAt TEXT NOT NULL,
-          PRIMARY KEY (key, serverId)
-        );
-
         CREATE TABLE jobs (
           id TEXT PRIMARY KEY,
           type TEXT NOT NULL,
@@ -105,20 +92,6 @@ export const migrations: Migration[] = [
           totalItems INTEGER DEFAULT 0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
-        );
-
-        CREATE TABLE library_items (
-          ratingKey TEXT NOT NULL,
-          libraryKey TEXT NOT NULL,
-          serverId TEXT NOT NULL,
-          title TEXT NOT NULL,
-          year INTEGER,
-          thumb TEXT,
-          type TEXT,
-          addedAt TEXT,
-          updatedAt TEXT NOT NULL,
-          meta_json TEXT,
-          PRIMARY KEY (ratingKey, serverId)
         );
 
         CREATE TABLE users (

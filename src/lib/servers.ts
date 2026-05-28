@@ -178,15 +178,10 @@ export const updateServer = async (
 
 // Prepared statements for cascading delete
 const deleteServerData = db.transaction((id: string) => {
-  // Delete associated data first
   db.prepare("DELETE FROM activity_history WHERE serverId = ?").run(id);
   db.prepare("DELETE FROM active_sessions WHERE serverId = ?").run(id);
-  db.prepare("DELETE FROM library_items WHERE serverId = ?").run(id);
   db.prepare("DELETE FROM users WHERE serverId = ?").run(id);
   db.prepare("DELETE FROM server_rules WHERE serverId = ?").run(id);
-  db.prepare("DELETE FROM libraries WHERE serverId = ?").run(id);
-  
-  // Finally delete the server configuration itself
   db.prepare("DELETE FROM servers WHERE id = ?").run(id);
 });
 

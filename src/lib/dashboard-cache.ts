@@ -1,9 +1,8 @@
-import type { LibrarySection, PlexSession, SessionSummary } from "@/lib/plex";
+import type { PlexSession, SessionSummary } from "@/lib/plex";
 
 export type DashboardSnapshot = {
   sessions: PlexSession[];
   summary: SessionSummary;
-  libraries: LibrarySection[];
   updatedAt: string;
   appName?: string;
 };

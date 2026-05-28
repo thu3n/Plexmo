@@ -1,12 +1,11 @@
 import useSWR from "swr";
 import { useEffect } from "react";
-import type { LibrarySection, PlexSession, SessionSummary } from "@/lib/plex";
+import type { PlexSession, SessionSummary } from "@/lib/plex";
 import type { PublicServer } from "@/lib/servers";
 
 type DashboardResponse = {
     sessions: PlexSession[];
     summary: SessionSummary;
-    libraries: LibrarySection[];
     updatedAt: string;
     appName?: string;
 };
@@ -62,7 +61,6 @@ export const useDashboardData = () => {
     return {
         sessions: data?.sessions ?? [],
         summary: data?.summary,
-        libraries: data?.libraries ?? [],
         appName: data?.appName,
         updatedAt: data?.updatedAt,
         servers: serversData?.servers ?? [],

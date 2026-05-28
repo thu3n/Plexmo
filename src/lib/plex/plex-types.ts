@@ -218,16 +218,6 @@ export type PlexSession = {
   Guid?: { id: string }[];
 };
 
-export type LibrarySection = {
-  key: string;
-  title: string;
-  type?: string;
-  agent?: string;
-  count: number;
-  refreshing: boolean;
-  serverId?: string;
-  serverName?: string;
-};
 
 export type SessionSummary = {
   active: number;
