@@ -381,6 +381,18 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: "drop_library_groups",
+    up: (db) => {
+      // The unified-libraries feature was removed; the tables that backed it
+      // linger on databases created under main. Drop the child first because
+      // it has a FOREIGN KEY on library_groups. IF EXISTS makes this a no-op
+      // on databases that never had the feature (refactor-era fresh installs).
+      db.exec(`DROP TABLE IF EXISTS library_group_members;`);
+      db.exec(`DROP TABLE IF EXISTS library_groups;`);
+    },
+  },
 ];
 
 /**
