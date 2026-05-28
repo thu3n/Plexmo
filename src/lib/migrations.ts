@@ -236,9 +236,6 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_history_dup_check ON activity_history(user, ratingKey, startTime);
         CREATE INDEX IF NOT EXISTS idx_active_dup_check ON active_sessions(user, ratingKey, startTime);
         CREATE INDEX IF NOT EXISTS idx_history_starttime ON activity_history(startTime);
-        CREATE INDEX IF NOT EXISTS idx_history_plex_guid ON activity_history(plex_guid);
-        CREATE INDEX IF NOT EXISTS idx_history_imdb ON activity_history(imdb_id);
-        CREATE INDEX IF NOT EXISTS idx_history_tmdb ON activity_history(tmdb_id);
       `);
 
       // --- Column additions for databases predating the column above ---
@@ -261,6 +258,15 @@ export const migrations: Migration[] = [
       addColumnIfMissing(db, "ALTER TABLE rule_instances ADD COLUMN discordWebhookIds TEXT");
       addColumnIfMissing(db, "ALTER TABLE activity_history ADD COLUMN userId TEXT");
       addColumnIfMissing(db, "ALTER TABLE active_sessions ADD COLUMN userId TEXT");
+
+      // Indexes that depend on columns added by addColumnIfMissing above.
+      // On a fresh database the columns are present from CREATE TABLE; on a
+      // pre-existing main-era database they only exist after the ALTERs.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_history_plex_guid ON activity_history(plex_guid);
+        CREATE INDEX IF NOT EXISTS idx_history_imdb ON activity_history(imdb_id);
+        CREATE INDEX IF NOT EXISTS idx_history_tmdb ON activity_history(tmdb_id);
+      `);
 
       // users.title: add column, then backfill from username where empty.
       try {
