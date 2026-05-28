@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJobs, createJob, getRunningJobForTarget } from "@/lib/jobs";
-import { syncLibraryItems, syncLibraries, syncAllLibrariesContent, syncAllLibraryLists } from "@/lib/libraries";
+import { syncLibraryItems, syncLibraries, syncAllLibraryLists } from "@/lib/libraries";
 import { getServerById } from "@/lib/servers";
 import { resolveServer } from "@/lib/plex";
 import { Logger } from "@/lib/logger";
@@ -78,21 +78,6 @@ export async function POST(req: NextRequest) {
             // Start sync in background
             syncLibraries(serverConfig, job.id).catch(err => {
                 Logger.error(`[API] Background library list sync failed for job ${job.id}:`, err);
-            });
-
-            return NextResponse.json({ job });
-        } else if (type === 'sync_all_content') {
-            // Check if global sync is running
-            const existing = getRunningJobForTarget(type, 'global');
-            if (existing) {
-                return NextResponse.json({ job: existing, message: "Global sync already running" });
-            }
-
-            const job = createJob(type, 'global');
-
-            // Start sync in background
-            syncAllLibrariesContent(job.id).catch(err => {
-                Logger.error(`[API] Global content sync failed for job ${job.id}:`, err);
             });
 
             return NextResponse.json({ job });

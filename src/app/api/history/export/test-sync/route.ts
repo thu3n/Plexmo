@@ -16,14 +16,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ job });
     }
 
-    if (type === 'sync_all_content') {
-        const { createJob } = await import("@/lib/jobs");
-        const { syncAllLibrariesContent } = await import("@/lib/libraries");
-        const job = createJob('sync_all_content', 'global');
-        syncAllLibrariesContent(job.id).catch(e => Logger.error("Sync failed", e));
-        return NextResponse.json({ job });
-    }
-
     if (!libraryKey || !serverId) {
         return NextResponse.json({ error: "Missing key or server" }, { status: 400 });
     }
