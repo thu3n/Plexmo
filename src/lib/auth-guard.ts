@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/jwt";
 import { validateApiKey } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import type { UserRow } from "@/lib/db-types";
 
 /**
  * Verifies if the request is authorized via Session OR API Key.
@@ -17,11 +18,11 @@ export async function authorizeApiKeyOrSession(request: Request) {
         if (sessionPayload) {
             // Re-fetch user from DB to ensure we have the latest 'isAdmin' status
             // The session token might be stale.
-            const dbUser = db.prepare("SELECT * FROM users WHERE id = ?").get(sessionPayload.id) as any;
+            const dbUser = db.prepare<[string], UserRow>("SELECT * FROM users WHERE id = ?").get(sessionPayload.id);
             if (dbUser) {
                 return {
                     ...sessionPayload,
-                    isAdmin: dbUser.isAdmin === 1 || dbUser.isAdmin === true
+                    isAdmin: dbUser.isAdmin === 1
                 };
             }
             // Fallback to session payload if db lookup fails (unlikely)

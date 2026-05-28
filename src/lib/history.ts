@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { type PlexSession, type PlexServerConfig } from "./plex";
+import type { UserRow, CountRow } from "./db-types";
 
 export type HistoryEntry = {
   id: string;
@@ -297,7 +298,7 @@ export const getHistory = (params: HistoryParams = {}): HistoryResult => {
   if (userId && userId !== "all") {
     // Robust lookup similar to getUserStats
     // 1. Try to find the user in the DB to get ID and Display Name
-    const userMatch = db.prepare("SELECT * FROM users WHERE username = ? OR id = ? OR title = ?").get(userId, userId, userId) as any;
+    const userMatch = db.prepare<[string, string, string], UserRow>("SELECT * FROM users WHERE username = ? OR id = ? OR title = ?").get(userId, userId, userId);
 
     if (userMatch) {
       // We found a user, so match against ID (new) OR Title (legacy) OR Username (just in case)
@@ -335,7 +336,7 @@ export const getHistory = (params: HistoryParams = {}): HistoryResult => {
   `;
 
   const historyEntries = db.prepare(historyQuery).all(...args, pageSize, offset) as HistoryEntry[];
-  const totalCount = (db.prepare(countQuery).get(...args) as any).count;
+  const totalCount = (db.prepare(countQuery).get(...args) as CountRow).count;
 
   // 3. Get Active Sessions (Only needed on page 1, or always? Let's get always for simplicity or only page 1)
   // Usually active sessions should be at the top of page 1.
@@ -420,6 +421,49 @@ export const getAllHistory = (params: { start?: number; end?: number; userId?: s
   return db.prepare(query).all(...args) as HistoryEntry[];
 };
 
+/**
+ * Fetch all history rows matching any of the given (serverId, ratingKey) pairs,
+ * newest first. Used by media stats to aggregate plays for a merged item that
+ * may map to different ratingKeys across servers.
+ */
+export const getHistoryBySourceKeys = (
+  sources: { serverId: string; ratingKey: string }[]
+): HistoryEntry[] => {
+  if (sources.length === 0) return [];
+
+  const placeholders = sources.map(() => "(h.serverId = ? AND h.ratingKey = ?)").join(" OR ");
+  const args = sources.flatMap((s) => [s.serverId, s.ratingKey]);
+
+  const query = `
+    SELECT h.*, s.name as serverName
+    FROM activity_history h
+    LEFT JOIN servers s ON h.serverId = s.id
+    WHERE ${placeholders}
+    ORDER BY h.startTime DESC
+  `;
+
+  return db.prepare(query).all(...args) as HistoryEntry[];
+};
+
+/**
+ * True if a history row exists for this user + ratingKey whose startTime falls
+ * within [fromTime, toTime]. Used to de-duplicate imports against a time window.
+ */
+export const hasHistoryNear = (user: string, ratingKey: string, fromTime: number, toTime: number): boolean => {
+  const row = db.prepare<[string, string, number, number], { 1: number }>(
+    "SELECT 1 FROM activity_history WHERE user = ? AND ratingKey = ? AND startTime >= ? AND startTime <= ? LIMIT 1"
+  ).get(user, ratingKey, fromTime, toTime);
+  return row !== undefined;
+};
+
+/** Same as hasHistoryNear, but against the active_sessions table. */
+export const hasActiveSessionNear = (user: string, ratingKey: string, fromTime: number, toTime: number): boolean => {
+  const row = db.prepare<[string, string, number, number], { 1: number }>(
+    "SELECT 1 FROM active_sessions WHERE user = ? AND ratingKey = ? AND startTime >= ? AND startTime <= ? LIMIT 1"
+  ).get(user, ratingKey, fromTime, toTime);
+  return row !== undefined;
+};
+
 export const deleteHistory = (ids: string[]) => {
   const deleteTransaction = db.transaction((idsToDelete: string[]) => {
     for (const id of idsToDelete) {
@@ -443,4 +487,13 @@ const deleteAll = db.prepare("DELETE FROM activity_history");
 
 export const deleteAllHistory = () => {
   deleteAll.run();
+};
+
+/**
+ * Run `fn` inside a single SQLite transaction and return a callable that
+ * executes it. Lets callers (e.g. bulk import) batch many history writes
+ * atomically without importing the raw db handle.
+ */
+export const withTransaction = <Args extends unknown[]>(fn: (...args: Args) => void): ((...args: Args) => void) => {
+  return db.transaction(fn) as (...args: Args) => void;
 };

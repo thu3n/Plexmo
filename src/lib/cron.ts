@@ -3,12 +3,13 @@ import { syncHistory } from "@/lib/history";
 import { db } from "@/lib/db";
 import { getSetting, setSetting } from "@/lib/settings";
 import { sendSessionStartNotification, sendSessionStopNotification } from "./discord";
+import type { ServerRow, ConcurrentSnapshotRow, ActiveSessionRow } from "@/lib/db-types";
 // import parser from "cron-parser"; // Removed for dynamic import
 
 export async function runCronJob() {
     try {
         // Get all servers
-        const servers = db.prepare("SELECT * FROM servers").all() as any[];
+        const servers = db.prepare<[], ServerRow>("SELECT * FROM servers").all();
 
         // Dynamic Import for Cron Parser to avoid Turbopack/Next.js bundling issues
         const cronParserModule = await import("cron-parser");
@@ -72,7 +73,7 @@ export async function runCronJob() {
             const currentCount = combinedSessions.length;
             if (currentCount > 0) {
                 // Check last snapshot to avoid duplicates
-                const lastSnapshot = db.prepare("SELECT count, sessions FROM concurrent_snapshots ORDER BY timestamp DESC LIMIT 1").get() as any;
+                const lastSnapshot = db.prepare<[], Pick<ConcurrentSnapshotRow, "count" | "sessions">>("SELECT count, sessions FROM concurrent_snapshots ORDER BY timestamp DESC LIMIT 1").get();
 
                 let shouldLog = true;
                 if (lastSnapshot) {
@@ -110,7 +111,7 @@ export async function runCronJob() {
         // This prevents the "infinite duration" bug.
         try {
             const stuckCutoff = Date.now() - (2 * 60 * 60 * 1000); // 2 hours
-            const stuckSessions = db.prepare("SELECT * FROM active_sessions WHERE lastSeen < ?").all(stuckCutoff) as any[];
+            const stuckSessions = db.prepare<[number], ActiveSessionRow>("SELECT * FROM active_sessions WHERE lastSeen < ?").all(stuckCutoff);
 
             if (stuckSessions.length > 0) {
                 // console.log(`[Cron] Found ${stuckSessions.length} stuck sessions. Cleaning up...`);

@@ -2,27 +2,11 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import type { RuleInstance } from "@/features/rules/types";
+
+export type { RuleInstance };
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-export interface RuleInstance {
-    id?: string;
-    type: string;
-    name: string;
-    enabled: boolean;
-    settings: {
-        limit: number;
-        enforce: boolean;
-        kill_all: boolean;
-        message: string;
-        notify?: boolean;
-    };
-    discordWebhookId: string | null;
-    discordWebhookIds?: string[];
-    global?: boolean;
-    userCount?: number;
-    serverCount?: number;
-}
 
 export function useRuleManagement() {
     const { data: rules, error, mutate } = useSWR<RuleInstance[]>("/api/rules/instances", fetcher);

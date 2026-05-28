@@ -1,14 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import type { AllowedUserRow } from "./db-types";
 
-export type AllowedUser = {
-    id: string;
-    email: string;
-    username: string | null;
-    createdAt: string;
-    removeAfterLogin: number; // 0 or 1
-    expiresAt: string | null;
-};
+/** Public alias for the raw `allowed_users` row shape. */
+export type AllowedUser = AllowedUserRow;
 
 const listStmt = db.prepare<[], AllowedUser>("SELECT * FROM allowed_users ORDER BY datetime(createdAt) DESC");
 const insertStmt = db.prepare<

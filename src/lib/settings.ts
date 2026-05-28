@@ -1,13 +1,12 @@
 import { db } from "./db";
+import type { SettingRow } from "./db-types";
 
-export interface Setting {
-    key: string;
-    value: string;
-}
+/** Public alias for the raw `settings` row shape. */
+export type Setting = SettingRow;
 
 export const getSettings = (): Record<string, string> => {
     try {
-        const rows = db.prepare("SELECT key, value FROM settings").all() as Setting[];
+        const rows = db.prepare<[], SettingRow>("SELECT key, value FROM settings").all();
         return rows.reduce((acc, row) => {
             acc[row.key] = row.value;
             return acc;
@@ -20,7 +19,7 @@ export const getSettings = (): Record<string, string> => {
 
 export const getSetting = (key: string, defaultValue?: string): string | undefined => {
     try {
-        const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as Setting | undefined;
+        const row = db.prepare<[string], Pick<SettingRow, "value">>("SELECT value FROM settings WHERE key = ?").get(key);
         return row ? row.value : defaultValue;
     } catch (error) {
         console.error(`Failed to fetch setting ${key}:`, error);

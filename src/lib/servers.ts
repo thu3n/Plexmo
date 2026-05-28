@@ -1,15 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import type { ServerRow } from "./db-types";
 
-export type DbServer = {
-  id: string;
-  name: string;
-  baseUrl: string;
-  token: string;
-  createdAt: string;
-  updatedAt: string;
-  color?: string | null;
-};
+/** Public alias for the raw `servers` row shape. */
+export type DbServer = ServerRow;
 
 export type PublicServer = {
   id: string;
@@ -76,6 +70,7 @@ export const ensureDefaultServer = async () => {
     token,
     createdAt: now,
     updatedAt: now,
+    color: null,
   };
 
   insertStmt.run(server);
@@ -134,6 +129,11 @@ export const getServerById = async (id: string): Promise<DbServer | undefined> =
   return getByIdStmt.get(id);
 };
 
+/** Number of configured servers. Used to detect first-run/setup state. */
+export const getServerCount = (): number => {
+  return countServers.get()?.count ?? 0;
+};
+
 export const createServer = async (input: ServerInput): Promise<PublicServer> => {
   const now = new Date().toISOString();
   const server: DbServer = {
@@ -182,7 +182,6 @@ const deleteServerData = db.transaction((id: string) => {
   db.prepare("DELETE FROM library_items WHERE serverId = ?").run(id);
   db.prepare("DELETE FROM users WHERE serverId = ?").run(id);
   db.prepare("DELETE FROM server_rules WHERE serverId = ?").run(id);
-  db.prepare("DELETE FROM library_group_members WHERE server_id = ?").run(id);
   db.prepare("DELETE FROM libraries WHERE serverId = ?").run(id);
   
   // Finally delete the server configuration itself

@@ -1,6 +1,21 @@
 import { db } from "./db";
+import type { JobRow } from "./db-types";
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+/** Map a raw jobs row to the domain Job (null -> undefined, narrow status). */
+const toJob = (row: JobRow): Job => ({
+    id: row.id,
+    type: row.type,
+    targetId: row.targetId ?? undefined,
+    status: row.status as JobStatus,
+    progress: row.progress,
+    message: row.message ?? undefined,
+    itemsProcessed: row.itemsProcessed,
+    totalItems: row.totalItems,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+});
 
 export interface Job {
     id: string;
@@ -67,13 +82,15 @@ export const updateJob = (id: string, updates: Partial<Omit<Job, 'id' | 'created
 };
 
 export const getJobs = (): Job[] => {
-    return db.prepare("SELECT * FROM jobs ORDER BY createdAt DESC LIMIT 50").all() as Job[];
+    return db.prepare<[], JobRow>("SELECT * FROM jobs ORDER BY createdAt DESC LIMIT 50").all().map(toJob);
 };
 
 export const getJob = (id: string): Job | undefined => {
-    return db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as Job | undefined;
+    const row = db.prepare<[string], JobRow>("SELECT * FROM jobs WHERE id = ?").get(id);
+    return row ? toJob(row) : undefined;
 };
 
 export const getRunningJobForTarget = (type: string, targetId: string): Job | undefined => {
-    return db.prepare("SELECT * FROM jobs WHERE type = ? AND targetId = ? AND status IN ('pending', 'running')").get(type, targetId) as Job | undefined;
+    const row = db.prepare<[string, string], JobRow>("SELECT * FROM jobs WHERE type = ? AND targetId = ? AND status IN ('pending', 'running')").get(type, targetId);
+    return row ? toJob(row) : undefined;
 };

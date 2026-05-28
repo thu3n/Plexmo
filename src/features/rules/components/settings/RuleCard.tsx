@@ -1,39 +1,11 @@
 import { Edit2, ShieldAlert, Trash2, Power, Bell, Globe, Users, Server, MonitorPlay, PauseCircle, Clock, Play, Square, CalendarClock, LucideIcon } from "lucide-react";
 import { clsx } from "clsx";
 import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
-
-interface RuleInstance {
-    id: string;
-    type: string; // "max_concurrent_streams"
-    name: string;
-    enabled: boolean;
-    settings: {
-        limit: number;
-        enforce: boolean;
-        kill_all: boolean;
-
-        message: string;
-        notify?: boolean;
-        schedule?: {
-            type: 'block' | 'allow';
-            timeWindows: Array<{
-                startTime: string;
-                endTime: string;
-                days: number[];
-            }>;
-        };
-    };
-    discordWebhookId: string | null;
-    discordWebhookIds?: string[];
-    global?: boolean;
-    serverCount?: number;
-    userCount?: number;
-    serverNames?: string[];
-    userNames?: string[];
-}
+import type { RuleInstance } from "@/features/rules/types";
 
 interface RuleCardProps {
-    rule: RuleInstance;
+    // A rendered card is always a persisted rule, so its id is present.
+    rule: RuleInstance & { id: string };
     onEdit: (rule: RuleInstance) => void;
     onDelete: (id: string, name: string) => void;
     onToggle: (id: string, enabled: boolean) => void;
