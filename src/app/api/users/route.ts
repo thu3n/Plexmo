@@ -4,6 +4,7 @@ import { importUsers, listLocalUsers } from "@/lib/users";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/jwt";
+import { Logger } from "@/lib/logger";
 
 // Simple sanitization helper
 function sanitize(input: any): string {
@@ -31,7 +32,7 @@ export async function GET() {
                 }
                 return allUsers;
             } catch (err) {
-                console.error("Background user sync failed:", err);
+                Logger.error("Background user sync failed:", err);
                 return [];
             }
         };
@@ -66,7 +67,7 @@ export async function GET() {
             return NextResponse.json({ users: allUsers });
         }
     } catch (error) {
-        console.error("Error fetching users:", error);
+        Logger.error("Error fetching users:", error);
         return NextResponse.json({ users: [] }, { status: 500 });
     }
 }
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, count: sanitizedUsers.length });
     } catch (error) {
-        console.error("Error importing users:", error);
+        Logger.error("Error importing users:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

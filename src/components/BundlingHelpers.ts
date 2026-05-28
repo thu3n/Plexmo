@@ -30,12 +30,10 @@ export function bundleHistoryEntries(entries: any[], options: { skipItemCheck?: 
         // For distinct episodes, we must check ratingKey. For merged movies, we might skip it (handled by options).
         const isSameItem = options.skipItemCheck ? true : String(prev.ratingKey) === String(curr.ratingKey);
 
-        // Remove ServerID check to allow cross-server bundling in Unified Groups
-        // const isSameServer = String(prev.serverId) === String(curr.serverId);
-
+        const isSameServer = String(prev.serverId) === String(curr.serverId);
         const isSameDay = prevDate === currDate;
 
-        if (isSameUser && isSameItem && isSameDay) {
+        if (isSameUser && isSameItem && isSameDay && isSameServer) {
             currentBundle.push(curr);
         } else {
             // Push current bundle

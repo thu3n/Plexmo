@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
                 }
             }
         } catch (e) {
-            console.log("Standard check failed, trying fork strategy...");
+            Logger.warn("Standard check failed, trying fork strategy...");
         }
 
         // Strategy 2: Tautulli Fork (get_server_names) if Strategy 1 found nothing
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
                     }
                 }
             } catch (e) {
-                console.error("Fork check failed:", e);
+                Logger.error("Fork check failed:", e);
             }
         }
 
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
         });
 
     } catch (error: any) {
-        console.error("Tautulli Check Error:", error);
+        Logger.error("Tautulli Check Error:", error);
         return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }
 }

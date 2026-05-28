@@ -1,4 +1,7 @@
 import { deleteServer, updateServer } from "@/lib/servers";
+import { deleteServerSnapshot } from "@/lib/dashboard-cache";
+import { runCronJob } from "@/lib/cron";
+import { Logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
 
 export async function DELETE(
@@ -8,6 +11,7 @@ export async function DELETE(
   const params = await props.params;
   try {
     await deleteServer(params.id);
+    deleteServerSnapshot(params.id);
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Kunde inte ta bort servern";
@@ -28,6 +32,8 @@ export async function PUT(
       token: body.token,
       color: body.color,
     });
+    deleteServerSnapshot(params.id);
+    runCronJob().catch((err) => Logger.error("Post-update cron kick failed:", err));
     return NextResponse.json({ server: updated }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Kunde inte uppdatera servern";

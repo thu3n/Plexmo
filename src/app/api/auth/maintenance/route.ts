@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/settings";
 import { verifyToken } from "@/lib/jwt";
+import { Logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
     const expiryStr = getSetting("MAINTENANCE_EXPIRY");
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
 
     } catch (error) {
-        console.error("Failed to set maintenance mode:", error);
+        Logger.error("Failed to set maintenance mode:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

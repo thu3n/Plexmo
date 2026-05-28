@@ -2,52 +2,28 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
-import { SettingsSection, SettingsCard } from "../components/SettingsComponents";
-import { UploadCloud, Database, AlertTriangle, CheckCircle2, XCircle, Download, Server, ArrowRight, Loader2, HelpCircle } from "lucide-react";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
+import { Database, CheckCircle2, XCircle, Download, ArrowRight, Loader2 } from "lucide-react";
 import clsx from "clsx";
-
-interface PlexmoServer {
-    id: string;
-    name: string;
-    baseUrl: string;
-    identifier?: string;
-}
-
-interface TautulliServerInfo {
-    id: string;
-    name: string;
-    identifier?: string;
-    type: 'standard' | 'fork';
-    param: string | number;
-}
-
-interface Job {
-    id: string;
-    status: 'pending' | 'running' | 'completed' | 'failed';
-    progress: number;
-    message?: string;
-    itemsProcessed: number;
-    totalItems: number;
-}
+import ServerMappingStep from "@/features/settings/components/import/ServerMappingStep";
+import ImportProgressStep from "@/features/settings/components/import/ImportProgressStep";
+import ImportStatsModal from "@/features/settings/components/import/ImportStatsModal";
+import type { PlexmoServer, TautulliServerInfo, Job, ImportStep, ImportStatus } from "@/features/settings/components/import/types";
 
 export default function ImportSettingsPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
-    const [status, setStatus] = useState<{ success?: boolean; message?: string; error?: string } | null>(null);
-
-
+    const [status, setStatus] = useState<ImportStatus | null>(null);
 
     // API Import State
-    const [step, setStep] = useState<'connect' | 'source_select' | 'mapping' | 'importing' | 'completed'>('connect');
+    const [step, setStep] = useState<ImportStep>('connect');
     const [apiUrl, setApiUrl] = useState("");
     const [apiKey, setApiKey] = useState("");
 
     // Server Mapping Data
     const [sourceServers, setSourceServers] = useState<TautulliServerInfo[]>([]);
-    const [tautulliServer, setTautulliServer] = useState<TautulliServerInfo | null>(null);
+    const [, setTautulliServer] = useState<TautulliServerInfo | null>(null);
     const [plexmoServers, setPlexmoServers] = useState<PlexmoServer[]>([]);
-    const [targetServerId, setTargetServerId] = useState<string>("");
     const [manualMapping, setManualMapping] = useState<Record<string, string>>({});
 
     // Ignored Servers
@@ -96,8 +72,6 @@ export default function ImportSettingsPage() {
             alert("Failed to export database");
         }
     };
-
-
 
     // --- API Import Handlers ---
 
@@ -154,33 +128,12 @@ export default function ImportSettingsPage() {
         }
     };
 
-    const selectSourceServer = (tServer: TautulliServerInfo, pServers: PlexmoServer[] = plexmoServers) => {
-        setTautulliServer(tServer);
-
-        // Attempt Auto-match
-        const tIdentifier = tServer.identifier;
-        const tName = tServer.name;
-
-        const match = pServers.find((p: any) =>
-            (tIdentifier && p.identifier === tIdentifier) || (p.name && tName && p.name.toLowerCase() === tName.toLowerCase())
-        );
-
-        if (match) {
-            setTargetServerId(match.id);
-        } else if (pServers.length > 0) {
-            setTargetServerId(pServers[0].id);
-        }
-
-        setStep('mapping');
-    };
-
     // Step 2: Start Import Job
     const handleStartImport = async () => {
         setIsProcessing(true);
         setStatus(null);
 
         try {
-            // Build Mapping
             // Build Mapping from state
             const mapping: { [key: string]: string } = {};
 
@@ -256,7 +209,6 @@ export default function ImportSettingsPage() {
     return (
         <div className="space-y-8 relative">
 
-
             <SettingsSection
                 title="Data Management"
                 description="Export your data for backup or import from other sources."
@@ -315,263 +267,28 @@ export default function ImportSettingsPage() {
                                             )}
 
                                             {step === 'source_select' && (
-                                                <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
-                                                    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                                                        <div className="flex items-center gap-3 mb-4">
-                                                            <div className="h-10 w-10 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-500 font-bold shrink-0">
-                                                                <Server className="w-6 h-6" />
-                                                            </div>
-                                                            <div>
-                                                                <h3 className="font-bold text-white text-lg">Server Mapping</h3>
-                                                                <p className="text-white/50 text-sm">Review how your Tautulli servers map to Plexmo.</p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-3">
-                                                            {sourceServers.map((tServer, idx) => {
-                                                                const tId = tServer.param.toString();
-                                                                const isIgnored = ignoredServers.has(tId);
-                                                                const currentTarget = manualMapping[tId] || "";
-
-                                                                return (
-                                                                    <div key={idx} className={clsx("flex flex-col sm:flex-row sm:items-center justify-between bg-black/30 p-3 rounded-lg border transition-all gap-4", isIgnored ? "border-white/5 opacity-50" : "border-white/5")}>
-                                                                        <div className="flex items-center gap-3">
-                                                                            <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/70">
-                                                                                {tServer.name ? tServer.name.substring(0, 1) : "?"}
-                                                                            </div>
-                                                                            <div>
-                                                                                <div className="text-sm font-bold text-white">{tServer.name || "Unknown Server"}</div>
-                                                                                <div className="text-xs text-white/40 font-mono">ID: {tServer.identifier === 'default' ? 'Default' : tServer.param}</div>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <div className="flex items-center gap-3 w-full sm:w-auto">
-                                                                            <ArrowRight className="w-4 h-4 text-white/20 hidden sm:block" />
-
-                                                                            <select
-                                                                                className={clsx(
-                                                                                    "bg-black/30 border text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500/50 w-full sm:w-48 transition-colors",
-                                                                                    currentTarget ? "border-emerald-500/30 text-emerald-100" : "border-white/10 text-white/50"
-                                                                                )}
-                                                                                value={isIgnored ? "ignore" : (currentTarget || "")}
-                                                                                onChange={(e) => {
-                                                                                    const val = e.target.value;
-                                                                                    if (val === 'ignore') {
-                                                                                        if (!isIgnored) toggleIgnore(tId);
-                                                                                    } else {
-                                                                                        if (isIgnored) toggleIgnore(tId);
-                                                                                        setManualMapping(prev => ({ ...prev, [tId]: val }));
-                                                                                    }
-                                                                                }}
-                                                                                disabled={isIgnored && false}
-                                                                            >
-                                                                                <option value="" disabled>Select Target Server...</option>
-                                                                                {plexmoServers.map(ps => (
-                                                                                    <option key={ps.id} value={ps.id}>{ps.name}</option>
-                                                                                ))}
-                                                                                <option value="ignore" className="text-rose-400">Do Not Import (Ignore)</option>
-                                                                            </select>
-
-                                                                            <button
-                                                                                onClick={() => toggleIgnore(tId)}
-                                                                                className={clsx(
-                                                                                    "p-2 rounded-lg transition-colors ml-2 shrink-0",
-                                                                                    isIgnored ? "bg-white/10 text-white hover:bg-white/20" : "hover:bg-white/10 text-white/50 hover:text-white"
-                                                                                )}
-                                                                                title={isIgnored ? "Include Server" : "Ignore Server"}
-                                                                            >
-                                                                                {isIgnored ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Validation Message */}
-                                                    {sourceServers.filter(s => !ignoredServers.has(s.param.toString())).some(s => !manualMapping[s.param.toString()]) ? (
-                                                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex gap-3 items-start">
-                                                            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                                                            <div className="text-sm text-amber-200">
-                                                                <strong>Unmapped Servers</strong>
-                                                                <p className="opacity-80 mt-1 mb-2">Some active servers are not mapped to a Plexmo server. Please select a target server for them or ignore them.</p>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 flex gap-3 items-center">
-                                                            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                                                            <div className="text-sm text-emerald-200">
-                                                                <strong>All Servers Mapped!</strong>
-                                                                <p className="opacity-80 text-xs mt-1">Ready to import history from {sourceServers.length - ignoredServers.size} servers.</p>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex gap-3">
-                                                        <button
-                                                            onClick={resetApiImport}
-                                                            className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold transition-all"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                        <button
-                                                            onClick={handleStartImport}
-                                                            className="w-full py-3 rounded-xl bg-amber-500 text-white font-bold hover:bg-amber-400 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
-                                                        >
-                                                            {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <UploadCloud className="w-5 h-5" />}
-                                                            Start Import
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                                <ServerMappingStep
+                                                    sourceServers={sourceServers}
+                                                    plexmoServers={plexmoServers}
+                                                    manualMapping={manualMapping}
+                                                    ignoredServers={ignoredServers}
+                                                    isProcessing={isProcessing}
+                                                    toggleIgnore={toggleIgnore}
+                                                    setManualMapping={setManualMapping}
+                                                    onCancel={resetApiImport}
+                                                    onStartImport={handleStartImport}
+                                                />
                                             )}
-
 
                                             {(step === 'importing' || step === 'completed') && (
-                                                <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
-                                                    <div className="bg-black/30 border border-white/10 rounded-xl p-6 text-center">
-                                                        {step === 'completed' && status?.success ? (
-                                                            <div className="mb-4 flex justify-center"><div className="h-16 w-16 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500"><CheckCircle2 className="w-8 h-8" /></div></div>
-                                                        ) : step === 'completed' && !status?.success ? (
-                                                            <div className="mb-4 flex justify-center"><div className="h-16 w-16 bg-rose-500/20 rounded-full flex items-center justify-center text-rose-500"><XCircle className="w-8 h-8" /></div></div>
-                                                        ) : (
-                                                            <div className="mb-4 flex justify-center"><Loader2 className="w-8 h-8 text-amber-500 animate-spin" /></div>
-                                                        )}
-
-                                                        <h3 className="text-xl font-bold text-white mb-2">
-                                                            {step === 'completed'
-                                                                ? (status?.success ? "Import Complete!" : "Import Failed")
-                                                                : "Importing History..."
-                                                            }
-                                                        </h3>
-
-                                                        {currentJob && (
-                                                            <div className="space-y-4">
-                                                                <div className="flex items-center justify-center gap-2">
-                                                                    <p className="text-white/60 text-sm">{currentJob.message}</p>
-                                                                    {step === 'completed' && (
-                                                                        <button
-                                                                            onClick={() => setShowDetails(true)}
-                                                                            className="text-amber-500 hover:text-amber-400 transition-colors p-1"
-                                                                            title="View Statistics Details"
-                                                                        >
-                                                                            <HelpCircle className="w-5 h-5" />
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-
-                                                                {/* Progress Bar */}
-                                                                <div className="w-full bg-white/10 rounded-full h-4 overflow-hidden relative">
-                                                                    <div
-                                                                        className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-amber-600 to-amber-400 Transition-all duration-300 ease-out"
-                                                                        style={{ width: `${currentJob.progress}%` }}
-                                                                    />
-                                                                </div>
-                                                                <div className="flex justify-between text-xs text-white/50 font-mono">
-                                                                    <span>{currentJob.itemsProcessed} / {currentJob.totalItems || '?'} items</span>
-                                                                    <span>{currentJob.progress}%</span>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {step === 'completed' && (
-                                                        <button
-                                                            onClick={resetApiImport}
-                                                            className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all"
-                                                        >
-                                                            Start New Import
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* Details Modal */}
-                                            {showDetails && currentJob && (
-                                                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                                                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
-                                                        <div className="flex items-center justify-between p-6 border-b border-white/10 shrink-0">
-                                                            <h3 className="text-xl font-bold text-white">Import Statistics</h3>
-                                                            <button
-                                                                onClick={() => setShowDetails(false)}
-                                                                className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                                                            >
-                                                                <XCircle className="w-5 h-5" />
-                                                            </button>
-                                                        </div>
-                                                        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
-                                                            {(() => {
-                                                                // Parse stats from message
-                                                                const msg = currentJob.message || "";
-                                                                const imported = (msg.match(/Imported:\s*(\d+)/) || [])[1] || "0";
-                                                                const skipped = (msg.match(/Skipped:\s*(\d+)/) || [])[1] || "0";
-                                                                const failed = (msg.match(/Failed:\s*(\d+)/) || [])[1] || "0";
-                                                                const fixed = (msg.match(/Fixed:\s*(\d+)/) || [])[1] || "0";
-
-                                                                return (
-                                                                    <div className="space-y-4">
-                                                                        <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl">
-                                                                            <div className="flex items-center justify-between mb-2">
-                                                                                <div className="text-sm font-bold text-emerald-400">Success</div>
-                                                                                <div className="text-2xl font-bold text-white">{imported}</div>
-                                                                            </div>
-                                                                            <ul className="text-xs text-emerald-200/60 list-disc list-inside space-y-1">
-                                                                                <li>Items successfully imported into Plexmo's database.</li>
-                                                                            </ul>
-                                                                        </div>
-
-                                                                        <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl">
-                                                                            <div className="flex items-center justify-between mb-2">
-                                                                                <div className="text-sm font-bold text-rose-400">Skipped</div>
-                                                                                <div className="text-2xl font-bold text-white">{skipped}</div>
-                                                                            </div>
-                                                                            <ul className="text-xs text-rose-200/60 list-disc list-inside space-y-1">
-                                                                                <li>Items were ignored because they already exist in your history.</li>
-                                                                                <li>"Incomplete data" refers to sessions that have <strong>no stop time</strong>, usually because they are currently active (ongoing) streams.</li>
-                                                                            </ul>
-                                                                        </div>
-
-                                                                        {/* Failed Section */}
-                                                                        {parseInt(failed || "0") > 0 && (
-                                                                            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
-                                                                                <div className="flex items-center justify-between mb-2">
-                                                                                    <div className="text-sm font-bold text-red-400">Failed / Unprocessed</div>
-                                                                                    <div className="text-2xl font-bold text-white">{failed}</div>
-                                                                                </div>
-                                                                                <ul className="text-xs text-red-200/60 list-disc list-inside space-y-1">
-                                                                                    <li><strong>Likely Connection Issues:</strong> These items could not be retrieved from Tautulli.</li>
-                                                                                    <li>This happens if a server is offline, the API times out, or the import job is interrupted.</li>
-                                                                                    <li>Please try running the import again to retry these items.</li>
-                                                                                </ul>
-                                                                            </div>
-                                                                        )}
-
-                                                                        <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
-                                                                            <div className="flex items-center justify-between mb-2">
-                                                                                <div className="text-sm font-bold text-amber-400">Capped Sessions (&gt;24h)</div>
-                                                                                <div className="text-2xl font-bold text-white">{fixed}</div>
-                                                                            </div>
-                                                                            <ul className="text-xs text-amber-200/60 list-disc list-inside space-y-1">
-                                                                                <li>Some historical sessions had unrealistic durations (e.g. 500 hours) due to glitches in the source data.</li>
-                                                                                <li>Historical durations are calculated as <code>Stopped - Started</code>, which includes <strong>paused time</strong>.</li>
-                                                                                <li>A 10-hour duration is perfectly valid (e.g. paused overnight), so we only filter extreme outliers.</li>
-                                                                                <li>We use a <strong>24-hour limit</strong> to catch only the obvious errors without affecting valid long viewing sessions.</li>
-                                                                            </ul>
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                        </div>
-                                                        <div className="p-4 border-t border-white/10 bg-white/5 rounded-b-2xl">
-                                                            <button
-                                                                onClick={() => setShowDetails(false)}
-                                                                className="w-full py-2 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg transition-colors"
-                                                            >
-                                                                Close
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                                <ImportProgressStep
+                                                    step={step}
+                                                    status={status}
+                                                    currentJob={currentJob}
+                                                    showDetails={showDetails}
+                                                    setShowDetails={setShowDetails}
+                                                    onReset={resetApiImport}
+                                                />
                                             )}
 
                                         </div>
@@ -601,64 +318,9 @@ export default function ImportSettingsPage() {
                 </div >
             </SettingsSection >
 
-            {/* Details Modal - Moved to Portal to avoid all stacking context/overflow issues */}
-            {showDetails && currentJob && typeof document !== 'undefined' && createPortal(
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between p-6 border-b border-white/10 shrink-0">
-                            <h3 className="text-xl font-bold text-white">Import Statistics</h3>
-                            <button
-                                onClick={() => setShowDetails(false)}
-                                className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                            >
-                                <XCircle className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
-                            {(() => {
-                                // Parse stats from message
-                                const msg = currentJob.message || "";
-                                const imported = (msg.match(/Imported:\s*(\d+)/) || [])[1] || "0";
-                                const skipped = (msg.match(/Skipped:\s*(\d+)/) || [])[1] || "0";
-
-                                return (
-                                    <div className="space-y-4">
-                                        <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="text-sm font-bold text-emerald-400">Success</div>
-                                                <div className="text-2xl font-bold text-white">{imported}</div>
-                                            </div>
-                                            <ul className="text-xs text-emerald-200/60 list-disc list-inside space-y-1">
-                                                <li>Items successfully imported into Plexmo's database.</li>
-                                            </ul>
-                                        </div>
-
-                                        <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="text-sm font-bold text-rose-400">Skipped</div>
-                                                <div className="text-2xl font-bold text-white">{skipped}</div>
-                                            </div>
-                                            <ul className="text-xs text-rose-200/60 list-disc list-inside space-y-1">
-                                                <li>Items were ignored because they already exist in your history.</li>
-                                                <li>"Incomplete data" refers to sessions that have <strong>no stop time</strong> (usually currently active streams that plexmo already have) .</li>
-                                                <li>Sessions with unrealistic durations (&gt;24 hours) were also skipped to prevent statistics errors.</li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                        <div className="p-4 border-t border-white/10 bg-white/5 rounded-b-2xl">
-                            <button
-                                onClick={() => setShowDetails(false)}
-                                className="w-full py-2 bg-white/10 hover:bg-white/15 text-white font-medium rounded-lg transition-colors"
-                            >
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>,
-                document.body
+            {/* Details Modal - Rendered to a portal to avoid all stacking context/overflow issues */}
+            {showDetails && currentJob && (
+                <ImportStatsModal currentJob={currentJob} onClose={() => setShowDetails(false)} />
             )}
 
         </div >

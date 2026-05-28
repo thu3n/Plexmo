@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { getUserRules, getGlobalRules } from "@/lib/rules";
+import { getUserRules, getGlobalRules, getEnabledServersForRule } from "@/lib/rules";
+import { getUsersByUsername } from "@/lib/users";
+import { Logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ username: string }> }) {
     try {
         const { username } = await params;
 
         // Resolve username to userId and get all servers this user belongs to
-        const users = db.prepare("SELECT id, serverId FROM users WHERE username = ?").all(decodeURIComponent(username)) as { id: string, serverId: string }[];
+        const users = getUsersByUsername(decodeURIComponent(username));
 
         if (!users || users.length === 0) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -30,17 +31,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         for (const rule of allRules) {
             // Get all servers that have this rule enabled
-            const enabledServers = db.prepare(`
-                SELECT sr.serverId, s.name 
-                FROM server_rules sr
-                JOIN servers s ON sr.serverId = s.id
-                WHERE sr.ruleKey = ?
-            `).all(rule.key) as { serverId: string, name: string }[];
+            const enabledServers = getEnabledServersForRule(rule.id);
 
             // Filter to only the servers this user belongs to
             const userEnabledServers = enabledServers.filter(s => userServerIds.includes(s.serverId));
 
-            serverRules[rule.key] = {
+            serverRules[rule.id] = {
                 enabled: userEnabledServers.length > 0,
                 servers: userEnabledServers
             };
@@ -48,7 +44,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         return NextResponse.json({ userId, rules: userRules.map((r: any) => r.id), serverRules });
     } catch (error) {
-        console.error("Error fetching user rules:", error);
+        Logger.error("Error fetching user rules:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

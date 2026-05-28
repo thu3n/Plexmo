@@ -2,13 +2,16 @@ import { getDashboardSnapshot } from "@/lib/plex";
 import { syncHistory } from "@/lib/history";
 import { db } from "@/lib/db";
 import { getSetting, setSetting } from "@/lib/settings";
+import { runRetentionSweepIfDue } from "@/lib/retention";
+import { setServerSnapshot, markServerFailure } from "@/lib/dashboard-cache";
 import { sendSessionStartNotification, sendSessionStopNotification } from "./discord";
+import type { ServerRow, ConcurrentSnapshotRow, ActiveSessionRow } from "@/lib/db-types";
 // import parser from "cron-parser"; // Removed for dynamic import
 
 export async function runCronJob() {
     try {
         // Get all servers
-        const servers = db.prepare("SELECT * FROM servers").all() as any[];
+        const servers = db.prepare<[], ServerRow>("SELECT * FROM servers").all();
 
         // Dynamic Import for Cron Parser to avoid Turbopack/Next.js bundling issues
         const cronParserModule = await import("cron-parser");
@@ -45,6 +48,7 @@ export async function runCronJob() {
             servers.map(async (server) => {
                 try {
                     const snapshot = await getDashboardSnapshot(server);
+                    setServerSnapshot(server.id, snapshot);
                     const { newSessions, endedSessions } = syncHistory(server, snapshot.sessions);
 
                     // Send Notifications (Fire and forget to not block sync)
@@ -57,6 +61,8 @@ export async function runCronJob() {
 
                     return { server: server.name, status: "ok", sessions: snapshot.sessions };
                 } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    markServerFailure(server.id, message);
                     console.error(`Failed to sync server ${server.name}:`, err);
                     return { server: server.name, status: "error", error: String(err) };
                 }
@@ -72,7 +78,7 @@ export async function runCronJob() {
             const currentCount = combinedSessions.length;
             if (currentCount > 0) {
                 // Check last snapshot to avoid duplicates
-                const lastSnapshot = db.prepare("SELECT count, sessions FROM concurrent_snapshots ORDER BY timestamp DESC LIMIT 1").get() as any;
+                const lastSnapshot = db.prepare<[], Pick<ConcurrentSnapshotRow, "count" | "sessions">>("SELECT count, sessions FROM concurrent_snapshots ORDER BY timestamp DESC LIMIT 1").get();
 
                 let shouldLog = true;
                 if (lastSnapshot) {
@@ -110,7 +116,7 @@ export async function runCronJob() {
         // This prevents the "infinite duration" bug.
         try {
             const stuckCutoff = Date.now() - (2 * 60 * 60 * 1000); // 2 hours
-            const stuckSessions = db.prepare("SELECT * FROM active_sessions WHERE lastSeen < ?").all(stuckCutoff) as any[];
+            const stuckSessions = db.prepare<[number], ActiveSessionRow>("SELECT * FROM active_sessions WHERE lastSeen < ?").all(stuckCutoff);
 
             if (stuckSessions.length > 0) {
                 // console.log(`[Cron] Found ${stuckSessions.length} stuck sessions. Cleaning up...`);
@@ -210,10 +216,23 @@ export async function runCronJob() {
             console.error("[Cron] Failed to process scheduled library sync:", e);
         }
 
+        // --- Scheduled Job: Reconcile Statistics (REMOVED) ---
+        // Legacy code removed.
+
+        // --- Daily Retention Sweep ---
+        // Self-gated to run at most once per local day; cheap no-op otherwise.
+        try {
+            runRetentionSweepIfDue();
+        } catch (e) {
+            console.error("[Cron] Retention sweep failed:", e);
+        }
+
+
         return {
             success: true,
             results: results.map(r => r.status === 'fulfilled' ? r.value : r.reason)
         };
+
     } catch (error) {
         console.error("Cron sync failed:", error);
         throw error;

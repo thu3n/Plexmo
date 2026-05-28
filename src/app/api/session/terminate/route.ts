@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { terminateSession, getDashboardSnapshot } from "@/lib/plex";
 import { listInternalServers, DbServer } from "@/lib/servers";
 import { sendSessionTerminatedNotification } from "@/lib/discord";
+import { Logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
             const snapshot = await getDashboardSnapshot(server);
             sessionToNotify = snapshot.sessions.find(s => s.id === sessionId || s.sessionKey === sessionId);
         } catch (e) {
-            console.error("Failed to fetch session details for notification", e);
+            Logger.error("Failed to fetch session details for notification", e);
         }
 
         // Call the lib function
@@ -43,12 +44,12 @@ export async function POST(request: Request) {
 
         if (sessionToNotify) {
             // Send notification asynchronously
-            sendSessionTerminatedNotification(sessionToNotify, reason || "Terminated via Plexmo").catch(console.error);
+            sendSessionTerminatedNotification(sessionToNotify, reason || "Terminated via Plexmo").catch(e => Logger.error("Failed to send Discord notification", e));
         }
 
         return NextResponse.json({ success: true, message: "Session terminated" });
     } catch (error: any) {
-        console.error("Terminate API Error:", error);
+        Logger.error("Terminate API Error:", error);
         return NextResponse.json(
             { error: error.message || "Failed to terminate session" },
             { status: 500 }

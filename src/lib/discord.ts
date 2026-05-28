@@ -2,6 +2,7 @@ import { getSetting, setSetting } from "./settings";
 import { PlexSession, decodePlexString } from "./plex";
 import { HistoryEntry } from "./history";
 import { db } from "./db";
+import type { DiscordWebhookRow, CountRow } from "./db-types";
 
 type DiscordEmbed = {
     title: string;
@@ -34,7 +35,7 @@ export type DiscordWebhook = {
 // Migration / Initialization
 const migrateWebhooks = () => {
     try {
-        const count = (db.prepare("SELECT COUNT(*) as count FROM discord_webhooks").get() as any).count;
+        const count = db.prepare<[], CountRow>("SELECT COUNT(*) as count FROM discord_webhooks").get()!.count;
         if (count === 0) {
             // Check for legacy setting
             const legacyUrl = getSetting("discordWebhookUrl");
@@ -70,16 +71,62 @@ migrateWebhooks();
 
 export const getWebhooks = (): DiscordWebhook[] => {
     try {
-        const rows = db.prepare("SELECT * FROM discord_webhooks").all() as any[];
-        return rows.map(row => ({
-            ...row,
+        const rows = db.prepare<[], DiscordWebhookRow>("SELECT * FROM discord_webhooks").all();
+        return rows.map((row): DiscordWebhook => ({
+            id: row.id,
+            name: row.name,
+            url: row.url,
             events: JSON.parse(row.events),
-            enabled: row.enabled === 1
+            enabled: row.enabled === 1,
+            createdAt: row.createdAt,
         }));
     } catch (e) {
         console.error("Failed to get webhooks:", e);
         return [];
     }
+};
+
+export interface WebhookInput {
+    name: string;
+    url: string;
+    events: string[];
+    enabled?: boolean;
+}
+
+/** Create a webhook; returns the generated id. */
+export const createWebhook = (input: WebhookInput): string => {
+    const id = crypto.randomUUID();
+    db.prepare(`
+        INSERT INTO discord_webhooks (id, name, url, events, enabled, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+        id,
+        input.name,
+        input.url,
+        JSON.stringify(input.events),
+        input.enabled === false ? 0 : 1,
+        new Date().toISOString()
+    );
+    return id;
+};
+
+/** Update an existing webhook's editable fields. */
+export const updateWebhook = (id: string, input: WebhookInput): void => {
+    db.prepare(`
+        UPDATE discord_webhooks
+        SET name = @name, url = @url, events = @events, enabled = @enabled
+        WHERE id = @id
+    `).run({
+        id,
+        name: input.name,
+        url: input.url,
+        events: JSON.stringify(input.events),
+        enabled: input.enabled ? 1 : 0,
+    });
+};
+
+export const deleteWebhook = (id: string): void => {
+    db.prepare("DELETE FROM discord_webhooks WHERE id = ?").run(id);
 };
 
 export const sendDiscordNotification = async (embed: DiscordEmbed, eventType: "start" | "stop" | "terminate" | "test", overrideUrl?: string) => {

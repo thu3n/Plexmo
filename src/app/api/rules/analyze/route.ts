@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { getRuleInstances, getRuleUsers, getRuleServers } from "@/lib/rules";
+import { getRuleInstances, getRuleAssignmentIds } from "@/lib/rules";
+import { listLocalUsers } from "@/lib/users";
+import { Logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     try {
@@ -23,8 +24,8 @@ export async function POST(req: NextRequest) {
         // Actually Plexmo logic: `checkAndLogViolations` uses `limit`. Enforcement is separate action.
         // So we just check limits.
 
-        // 1. Fetch all users
-        const allUsers = db.prepare("SELECT id, username FROM users").all() as { id: string, username: string }[];
+        // 1. Fetch all users (used for both the limit calc and the user->server map)
+        const allUsers = listLocalUsers();
 
         // 2. Fetch all EXISTING ACTIVE rules
         // Exclude the one we are editing (if id exists)
@@ -43,11 +44,10 @@ export async function POST(req: NextRequest) {
         const ruleAssignments = new Map<string, { userIds: Set<string>, serverIds: Set<string>, isGlobal: boolean }>();
 
         for (const r of allRules) {
-            const users = db.prepare("SELECT userId FROM user_rules WHERE ruleKey = ?").all(r.id) as { userId: string }[];
-            const servers = db.prepare("SELECT serverId FROM server_rules WHERE ruleKey = ?").all(r.id) as { serverId: string }[];
+            const { userIds, serverIds } = getRuleAssignmentIds(r.id);
 
-            const uSet = new Set(users.map(u => u.userId));
-            const sSet = new Set(servers.map(s => s.serverId));
+            const uSet = new Set(userIds);
+            const sSet = new Set(serverIds);
             const isGlobal = uSet.size === 0 && sSet.size === 0; // Backend logic for Global
 
             ruleAssignments.set(r.id, { userIds: uSet, serverIds: sSet, isGlobal });
@@ -58,8 +58,7 @@ export async function POST(req: NextRequest) {
         // Backend `getRuleUsers` joins `users` on `serverId`.
         // Let's get user-server map.
         const userServerMap = new Map<string, string>(); // userId -> serverId
-        const usersWithServer = db.prepare("SELECT id, serverId FROM users").all() as { id: string, serverId: string }[];
-        usersWithServer.forEach(u => userServerMap.set(u.id, u.serverId));
+        allUsers.forEach(u => userServerMap.set(u.id, u.serverId));
 
         // Calculate Current Limits
         for (const user of allUsers) {
@@ -113,7 +112,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ impactedUsers });
 
     } catch (error) {
-        console.error("Analysis failed:", error);
+        Logger.error("Analysis failed:", error);
         return NextResponse.json({ error: "Analysis failed" }, { status: 500 });
     }
 }

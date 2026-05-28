@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/jwt";
 import { XMLParser } from "fast-xml-parser";
+import { Logger } from "@/lib/logger";
 
 const parser = new XMLParser({
     ignoreAttributes: false,
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
         const session = await verifyToken(tokenCookie);
         // console.log("DEBUG: Session:", session);
         if (!session || !session.accessToken) {
-            console.error("DEBUG: Missing accessToken in session");
+            Logger.error("DEBUG: Missing accessToken in session");
             return NextResponse.json({ error: "Invalid session" }, { status: 401 });
         }
         accessToken = session.accessToken;
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ servers });
     } catch (error) {
-        console.error("Error fetching resources:", error);
+        Logger.error("Error fetching resources:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

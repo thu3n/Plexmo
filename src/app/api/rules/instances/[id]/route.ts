@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRuleInstance, updateRuleInstance, deleteRuleInstance } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 // We need to define params type for dynamic route
 interface Props {
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest, props: Props) {
         }
         return NextResponse.json(instance);
     } catch (error) {
-        console.error("Failed to fetch rule instance:", error);
+        Logger.error("Failed to fetch rule instance:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
@@ -41,7 +42,7 @@ export async function PUT(req: NextRequest, props: Props) {
         updateRuleInstance(updated);
         return NextResponse.json(updated);
     } catch (error) {
-        console.error("Failed to update rule instance:", error);
+        Logger.error("Failed to update rule instance:", error);
         return NextResponse.json({ error: "Failed to update rule" }, { status: 500 });
     }
 }
@@ -52,7 +53,7 @@ export async function DELETE(req: NextRequest, props: Props) {
         deleteRuleInstance(params.id);
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Failed to delete rule instance:", error);
+        Logger.error("Failed to delete rule instance:", error);
         return NextResponse.json({ error: "Failed to delete rule" }, { status: 500 });
     }
 }

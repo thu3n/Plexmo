@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { Logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export async function GET() {
         return response;
 
     } catch (error) {
-        console.error("[Export Error]", error);
+        Logger.error("[Export Error]", error);
         return NextResponse.json({ error: "Internal Export Error" }, { status: 500 });
     }
 }

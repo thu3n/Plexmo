@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserStats } from "@/lib/user_stats";
 import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
+import { Logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
         const stats = getUserStats(username);
         return NextResponse.json(stats);
     } catch (error) {
-        console.error("Failed to fetch user stats:", error);
+        Logger.error("Failed to fetch user stats:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

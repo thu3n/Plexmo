@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, getPlexUser, verifyAccess } from "@/lib/auth";
+import { Logger } from "@/lib/logger";
 
 // ... (imports)
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
         });
 
         if (!response.ok) {
-            console.error("Plex PIN error", await response.text());
+            Logger.error("Plex PIN error", await response.text());
             return NextResponse.json({ error: "Failed to create PIN" }, { status: response.status });
         }
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
         });
 
     } catch (error) {
-        console.error("GET Auth Error:", error);
+        Logger.error("GET Auth Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
         return response;
 
     } catch (error) {
-        console.error("Auth error:", error);
+        Logger.error("Auth error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

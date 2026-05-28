@@ -3,15 +3,16 @@ import { createJob } from "@/lib/jobs";
 import { syncLibraryItems, syncAllLibraryLists } from "@/lib/libraries";
 import { getServerById } from "@/lib/servers";
 import { resolveServer } from "@/lib/plex";
+import { Logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
     const body = await req.json();
     const { key: libraryKey, server: serverId, type } = body;
-    console.log("Test Route Type:", type);
+    Logger.info("Test Route Type:", type);
 
     if (type === 'sync_all_library_lists') {
         const job = createJob('sync_all_library_lists', 'global');
-        syncAllLibraryLists(job.id).catch(console.error);
+        syncAllLibraryLists(job.id).catch(e => Logger.error("Sync failed", e));
         return NextResponse.json({ job });
     }
 
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
         const { createJob } = await import("@/lib/jobs");
         const { syncAllLibrariesContent } = await import("@/lib/libraries");
         const job = createJob('sync_all_content', 'global');
-        syncAllLibrariesContent(job.id).catch(console.error);
+        syncAllLibrariesContent(job.id).catch(e => Logger.error("Sync failed", e));
         return NextResponse.json({ job });
     }
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     const job = createJob(jobType, libraryKey);
 
     syncLibraryItems(serverConfig, libraryKey, job.id).catch(err => {
-        console.error(`[TestAPI] Sync failed:`, err);
+        Logger.error(`[TestAPI] Sync failed:`, err);
     });
 
     return NextResponse.json({ job });

@@ -1,17 +1,10 @@
 
 import { db } from "./db";
 import type { PlexUser } from "./plex";
+import type { UserRow } from "./db-types";
 
-export type DbUser = {
-    id: string;
-    title: string;
-    username: string;
-    email: string | null;
-    thumb: string | null;
-    serverId: string;
-    importedAt: string;
-    isAdmin: number;
-};
+/** Public alias for the raw `users` row shape. */
+export type DbUser = UserRow;
 
 const insertUserStmt = db.prepare<DbUser>(`
   INSERT INTO users (id, title, username, email, thumb, serverId, importedAt, isAdmin)
@@ -49,4 +42,33 @@ export const importUsers = (users: PlexUser[]) => {
 
 export const listLocalUsers = (): DbUser[] => {
     return listUsersStmt.all();
+};
+
+/** All user records matching a username (a username can exist across servers). */
+export const getUsersByUsername = (username: string): DbUser[] => {
+    return db.prepare<[string], DbUser>("SELECT * FROM users WHERE username = ?").all(username);
+};
+
+export const getUserById = (id: string): DbUser | undefined => {
+    return db.prepare<[string], DbUser>("SELECT * FROM users WHERE id = ?").get(id);
+};
+
+/**
+ * Create a placeholder ("ghost") user discovered during history import, when no
+ * matching user exists yet. INSERT OR IGNORE so a concurrent/duplicate insert is
+ * a no-op. Marked non-admin with no email.
+ */
+export const createGhostUser = (params: { id: string; title: string; username: string; serverId: string }): void => {
+    db.prepare(`
+        INSERT OR IGNORE INTO users (id, title, username, email, thumb, serverId, importedAt, isAdmin)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+    `).run(
+        params.id,
+        params.title,
+        params.username,
+        null,
+        "",
+        params.serverId,
+        new Date().toISOString()
+    );
 };

@@ -1,11 +1,12 @@
 "use client";
 
 import useSWR from "swr";
-import { SettingsSection, SettingsCard } from "../components/SettingsComponents";
+import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { CronControl } from "./CronControl";
 import { useLanguage } from "@/components/LanguageContext";
+import { HistoryRepairPanel } from "@/features/settings/components/HistoryRepairPanel";
 // Add ChevronLeft, ChevronRight
-import { RefreshCw, Globe, List, CheckCircle, XCircle, Play, History, Activity, ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { RefreshCw, Globe, List, CheckCircle, XCircle, Play, History, Activity, ChevronLeft, ChevronRight, Info, Wrench } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import clsx from "clsx";
 import { useState, useMemo } from "react";
@@ -40,6 +41,20 @@ export default function JobsSettingsPage() {
             });
             mutate();
         } catch { alert("Failed to start job"); }
+    };
+
+    const handleRunLinkHistory = async () => {
+        if (!confirm("This will process unlinked history items. Continue?")) return;
+        try {
+            const res = await fetch("/api/admin/link-history", { method: "POST" });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || "Failed");
+
+            mutate();
+            alert("Job started"); // Simple feedback
+        } catch (e: any) {
+            alert(`Failed to start job: ${e.message}`);
+        }
     };
 
     const handleSaveSetting = async (key: string, value: string) => {
@@ -97,13 +112,24 @@ export default function JobsSettingsPage() {
                             cron={syncLibsTime}
                             enabled={syncLibsEnabled}
                             activeJob={activeListSync}
-                            onStart={() => handleJob('sync_all_library_lists')}
-                            onEnabledChange={(v: boolean) => handleSaveSetting("job_sync_libraries_enabled", String(v))}
                             onCronChange={(v: string) => handleSaveSetting("job_sync_libraries_cron", v)}
                             defaultCron="0 4 * * *"
                         />
                     </div>
                 </div>
+
+                {/* Maintenance Tools */}
+                <div className="mt-12">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-white/5 rounded-lg">
+                            <Wrench className="w-5 h-5 text-white/70" />
+                        </div>
+                        <h3 className="text-lg font-bold text-white">Maintenance Tools</h3>
+                    </div>
+                    <HistoryRepairPanel />
+                </div>
+
+                <hr className="my-12 border-white/5" />
 
                 {/* History Section */}
                 <div className="mt-12">

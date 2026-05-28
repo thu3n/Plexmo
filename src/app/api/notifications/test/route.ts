@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
+import { Logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
-        console.error("Test notification failed:", error);
+        Logger.error("Test notification failed:", error);
         return NextResponse.json({ error: error.message || "Failed to send test notification" }, { status: 500 });
     }
 }

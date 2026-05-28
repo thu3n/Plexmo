@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings, setSetting } from "@/lib/settings";
+import { Logger } from "@/lib/logger";
 
 export async function GET() {
     const settings = getSettings();
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
         setSetting(key, String(value));
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Failed to save setting:", error);
+        Logger.error("Failed to save setting:", error);
         return new NextResponse("Internal Server Error", { status: 500 });
     }
 }

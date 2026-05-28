@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { HistoryEntry } from "./history";
+import type { UserRow } from "./db-types";
 
 export type UserStats = {
     global: {
@@ -18,6 +19,17 @@ export type UserStats = {
     recentlyPlayed: HistoryEntry[];
 };
 
+// Projection for the period/all-time aggregate queries below. SUM() returns NULL
+// when no rows match (call sites coalesce with `|| 0`), so duration is nullable.
+interface PeriodStatsRow {
+    count: number;
+    duration: number | null;
+}
+
+// Bind params for the user-scoped aggregate queries (period queries add `since`).
+type StatsParams = { username: string; userId: string };
+type PeriodStatsParams = StatsParams & { since: number };
+
 const getStreakActivity = db.prepare(`
     SELECT 
         strftime('%Y-%m-%d', datetime(h.startTime / 1000, 'unixepoch', 'localtime')) as date,
@@ -30,16 +42,23 @@ const getStreakActivity = db.prepare(`
     ORDER BY h.startTime ASC
 `);
 
-const getStatsForPeriod = db.prepare(`
+const getStatsForPeriod = db.prepare<PeriodStatsParams, PeriodStatsRow>(`
     SELECT COUNT(*) as count, SUM(duration) as duration
     FROM activity_history
     WHERE (user = @username OR userId = @userId) AND stopTime > @since
 `);
 
-const getAllTimeStats = db.prepare(`
-    SELECT COUNT(*) as count, SUM(duration) as duration
-    FROM activity_history
-    WHERE (user = @username OR userId = @userId)
+// All-time totals come from the materialized user_activity_summary table —
+// see migration v3 and insertHistoryRow() in history.ts. The summary is keyed
+// by COALESCE(userId, user), so we look up under both possible bucket keys
+// (matched user's id, or the raw username for legacy rows that never got a
+// userId backfill). SUM() coalesces the two rows in the rare both-exist case.
+const getAllTimeStats = db.prepare<StatsParams, PeriodStatsRow>(`
+    SELECT
+      COALESCE(SUM(total_count), 0) as count,
+      COALESCE(SUM(total_duration), 0) as duration
+    FROM user_activity_summary
+    WHERE userId = @userId OR userId = @username
 `);
 
 const getPlatformStats = db.prepare(`
@@ -50,10 +69,13 @@ const getPlatformStats = db.prepare(`
     ORDER BY count DESC
 `);
 
+// Reads the promoted `player` column (migration v3) instead of evaluating
+// json_extract per row, so the (user/userId, stopTime) indexes from migration
+// v2 can serve the WHERE.
 const getPlayerStats = db.prepare(`
-    SELECT json_extract(meta_json, '$.player') as player, COUNT(*) as count
+    SELECT player, COUNT(*) as count
     FROM activity_history
-    WHERE (user = @username OR userId = @userId) AND meta_json IS NOT NULL
+    WHERE (user = @username OR userId = @userId) AND player IS NOT NULL
     GROUP BY player
     ORDER BY count DESC
 `);
@@ -258,7 +280,7 @@ export const getUserStats = (username: string): UserStats => {
     // linking them via the 'users' table is best.
 
     // Check if we have a user with this username
-    const userMatch = db.prepare("SELECT * FROM users WHERE username = ? OR title = ?").get(username, username) as any;
+    const userMatch = db.prepare<[string, string], UserRow>("SELECT * FROM users WHERE username = ? OR title = ?").get(username, username);
 
     const userId = userMatch ? userMatch.id : "NO_MATCH_ID";
     // If we matched a user, we use their current Display Name as the primary "user" param for fallback, 
@@ -271,10 +293,10 @@ export const getUserStats = (username: string): UserStats => {
     const since7d = { ...params, since: now - (7 * oneDay) };
     const since30d = { ...params, since: now - (30 * oneDay) };
 
-    const stats24h = getStatsForPeriod.get(since24h) as any;
-    const stats7d = getStatsForPeriod.get(since7d) as any;
-    const stats30d = getStatsForPeriod.get(since30d) as any;
-    const statsAll = getAllTimeStats.get(params) as any;
+    const stats24h = getStatsForPeriod.get(since24h);
+    const stats7d = getStatsForPeriod.get(since7d);
+    const stats30d = getStatsForPeriod.get(since30d);
+    const statsAll = getAllTimeStats.get(params);
 
     const platforms = getPlatformStats.all(params) as { platform: string; count: number }[];
     const players = getPlayerStats.all(params) as { player: string; count: number }[];
@@ -301,10 +323,10 @@ export const getUserStats = (username: string): UserStats => {
 
     return {
         global: {
-            last24h: { count: stats24h.count || 0, duration: stats24h.duration || 0 },
-            last7d: { count: stats7d.count || 0, duration: stats7d.duration || 0 },
-            last30d: { count: stats30d.count || 0, duration: stats30d.duration || 0 },
-            allTime: { count: statsAll.count || 0, duration: statsAll.duration || 0 },
+            last24h: { count: stats24h?.count || 0, duration: stats24h?.duration || 0 },
+            last7d: { count: stats7d?.count || 0, duration: stats7d?.duration || 0 },
+            last30d: { count: stats30d?.count || 0, duration: stats30d?.duration || 0 },
+            allTime: { count: statsAll?.count || 0, duration: statsAll?.duration || 0 },
         },
         streaks,
         platforms,

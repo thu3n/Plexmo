@@ -1,7 +1,7 @@
 "use client";
 
-import { SettingsSidebar } from "./components/SettingsSidebar";
-import { SettingsHeader } from "./components/SettingsHeader";
+import { SettingsSidebar } from "@/features/settings/components/layout/SettingsSidebar";
+import { SettingsHeader } from "@/features/settings/components/layout/SettingsHeader";
 
 export default function SettingsLayout({
     children,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
         });
 
     } catch (error) {
-        console.error("Image proxy error:", error);
+        Logger.error("Image proxy error:", error);
         return new NextResponse("Internal Server Error", { status: 500 });
     }
 }

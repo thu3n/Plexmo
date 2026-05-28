@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getHistory, deleteHistory, deleteAllHistory } from "@/lib/history";
 import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
+import { Logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export async function DELETE(request: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Failed to delete history:", error);
+        Logger.error("Failed to delete history:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { Logger } from "@/lib/logger";
 
 interface VersionInfo {
     version: string;
@@ -47,7 +48,7 @@ export async function GET() {
 
         return NextResponse.json(versionInfo);
     } catch (error) {
-        console.error('Error reading version info:', error);
+        Logger.error('Error reading version info:', error);
         return NextResponse.json(
             {
                 error: 'Failed to read version information',

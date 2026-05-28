@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { type PlexSession, type PlexServerConfig } from "./plex";
+import type { UserRow, CountRow } from "./db-types";
 
 export type HistoryEntry = {
   id: string;
@@ -20,15 +21,64 @@ export type HistoryEntry = {
   pausedCounter: number;
   thumb?: string;
   parentThumb?: string;
+  plex_guid?: string;
+  imdb_id?: string;
+  tmdb_id?: string;
+  tvdb_id?: string;
 };
 
 const insertHistory = db.prepare(`
   INSERT INTO activity_history (
-    id, serverId, userId, user, title, subtitle, ratingKey, startTime, stopTime, duration, platform, device, ip, meta_json, pausedCounter
+    id, serverId, userId, user, title, subtitle, ratingKey, startTime, stopTime, duration, platform, device, ip, meta_json, pausedCounter,
+    plex_guid, imdb_id, tmdb_id, tvdb_id, player
   ) VALUES (
-    @id, @serverId, @userId, @user, @title, @subtitle, @ratingKey, @startTime, @stopTime, @duration, @platform, @device, @ip, @meta_json, @pausedCounter
+    @id, @serverId, @userId, @user, @title, @subtitle, @ratingKey, @startTime, @stopTime, @duration, @platform, @device, @ip, @meta_json, @pausedCounter,
+    @plex_guid, @imdb_id, @tmdb_id, @tvdb_id, @player
   )
 ` as any);
+
+// user_activity_summary mirrors per-user totals so getAllTimeStats is O(1)
+// instead of a full scan. Bucket key matches the migration backfill:
+// COALESCE(userId, user). `last_played_at` clamps forward only — out-of-order
+// imports (Tautulli backfills) won't move it backward.
+const upsertUserSummary = db.prepare(`
+  INSERT INTO user_activity_summary (userId, username, total_count, total_duration, last_played_at, updated_at)
+  VALUES (@userId, @username, 1, @duration, @stopTime, @now)
+  ON CONFLICT(userId) DO UPDATE SET
+    username = excluded.username,
+    total_count = total_count + 1,
+    total_duration = total_duration + excluded.total_duration,
+    last_played_at = MAX(IFNULL(last_played_at, 0), excluded.last_played_at),
+    updated_at = excluded.updated_at
+` as any);
+
+const extractPlayerFromMeta = (meta_json: string | null | undefined): string | null => {
+  if (!meta_json) return null;
+  try {
+    const parsed = JSON.parse(meta_json) as { player?: string };
+    return parsed.player ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const insertHistoryRow = (entry: HistoryEntry) => {
+  insertHistory.run({
+    ...entry,
+    plex_guid: entry.plex_guid ?? null,
+    imdb_id: entry.imdb_id ?? null,
+    tmdb_id: entry.tmdb_id ?? null,
+    tvdb_id: entry.tvdb_id ?? null,
+    player: extractPlayerFromMeta(entry.meta_json),
+  });
+  upsertUserSummary.run({
+    userId: entry.userId ?? entry.user,
+    username: entry.user,
+    duration: entry.duration,
+    stopTime: entry.stopTime,
+    now: Date.now(),
+  });
+};
 
 const insertActive = db.prepare(`
   INSERT OR REPLACE INTO active_sessions (
@@ -123,8 +173,12 @@ export const syncHistory = (server: PlexServerConfig, currentSessions: PlexSessi
           ip: undefined,
           meta_json: existing.meta_json || undefined,
           pausedCounter: existing.pausedCounter,
+          plex_guid: undefined,
+          imdb_id: undefined,
+          tmdb_id: undefined,
+          tvdb_id: undefined
         };
-        insertHistory.run(historyEntry);
+        insertHistoryRow(historyEntry);
         endedSessions.push(historyEntry);
       }
 
@@ -239,9 +293,13 @@ export const syncHistory = (server: PlexServerConfig, currentSessions: PlexSessi
           meta_json: stored.meta_json || undefined,
           pausedCounter: stored.pausedCounter,
           // Add thumbs if we can recover them from meta_json or stored fields (not stored currently)
+          plex_guid: undefined,
+          imdb_id: undefined,
+          tmdb_id: undefined,
+          tvdb_id: undefined
         };
 
-        insertHistory.run(historyEntry);
+        insertHistoryRow(historyEntry);
         endedSessions.push(historyEntry);
       }
 
@@ -283,7 +341,7 @@ export const getHistory = (params: HistoryParams = {}): HistoryResult => {
   if (userId && userId !== "all") {
     // Robust lookup similar to getUserStats
     // 1. Try to find the user in the DB to get ID and Display Name
-    const userMatch = db.prepare("SELECT * FROM users WHERE username = ? OR id = ? OR title = ?").get(userId, userId, userId) as any;
+    const userMatch = db.prepare<[string, string, string], UserRow>("SELECT * FROM users WHERE username = ? OR id = ? OR title = ?").get(userId, userId, userId);
 
     if (userMatch) {
       // We found a user, so match against ID (new) OR Title (legacy) OR Username (just in case)
@@ -321,7 +379,7 @@ export const getHistory = (params: HistoryParams = {}): HistoryResult => {
   `;
 
   const historyEntries = db.prepare(historyQuery).all(...args, pageSize, offset) as HistoryEntry[];
-  const totalCount = (db.prepare(countQuery).get(...args) as any).count;
+  const totalCount = (db.prepare(countQuery).get(...args) as CountRow).count;
 
   // 3. Get Active Sessions (Only needed on page 1, or always? Let's get always for simplicity or only page 1)
   // Usually active sessions should be at the top of page 1.
@@ -406,21 +464,117 @@ export const getAllHistory = (params: { start?: number; end?: number; userId?: s
   return db.prepare(query).all(...args) as HistoryEntry[];
 };
 
+/**
+ * Fetch all history rows matching any of the given (serverId, ratingKey) pairs,
+ * newest first. Used by media stats to aggregate plays for a merged item that
+ * may map to different ratingKeys across servers.
+ */
+export const getHistoryBySourceKeys = (
+  sources: { serverId: string; ratingKey: string }[]
+): HistoryEntry[] => {
+  if (sources.length === 0) return [];
+
+  const placeholders = sources.map(() => "(h.serverId = ? AND h.ratingKey = ?)").join(" OR ");
+  const args = sources.flatMap((s) => [s.serverId, s.ratingKey]);
+
+  const query = `
+    SELECT h.*, s.name as serverName
+    FROM activity_history h
+    LEFT JOIN servers s ON h.serverId = s.id
+    WHERE ${placeholders}
+    ORDER BY h.startTime DESC
+  `;
+
+  return db.prepare(query).all(...args) as HistoryEntry[];
+};
+
+/**
+ * True if a history row exists for this user + ratingKey whose startTime falls
+ * within [fromTime, toTime]. Used to de-duplicate imports against a time window.
+ */
+export const hasHistoryNear = (user: string, ratingKey: string, fromTime: number, toTime: number): boolean => {
+  const row = db.prepare<[string, string, number, number], { 1: number }>(
+    "SELECT 1 FROM activity_history WHERE user = ? AND ratingKey = ? AND startTime >= ? AND startTime <= ? LIMIT 1"
+  ).get(user, ratingKey, fromTime, toTime);
+  return row !== undefined;
+};
+
+/** Same as hasHistoryNear, but against the active_sessions table. */
+export const hasActiveSessionNear = (user: string, ratingKey: string, fromTime: number, toTime: number): boolean => {
+  const row = db.prepare<[string, string, number, number], { 1: number }>(
+    "SELECT 1 FROM active_sessions WHERE user = ? AND ratingKey = ? AND startTime >= ? AND startTime <= ? LIMIT 1"
+  ).get(user, ratingKey, fromTime, toTime);
+  return row !== undefined;
+};
+
+const selectAffectedUserKeys = db.prepare<[string], { bucketKey: string }>(
+  "SELECT DISTINCT COALESCE(userId, user) as bucketKey FROM activity_history WHERE id = ?"
+);
+const rebuildUserSummary = db.prepare(`
+  INSERT INTO user_activity_summary (userId, username, total_count, total_duration, last_played_at, updated_at)
+  SELECT
+    COALESCE(userId, user) as userId,
+    MAX(user) as username,
+    COUNT(*) as total_count,
+    SUM(duration) as total_duration,
+    MAX(stopTime) as last_played_at,
+    @now as updated_at
+  FROM activity_history
+  WHERE COALESCE(userId, user) = @bucketKey
+  GROUP BY COALESCE(userId, user)
+  ON CONFLICT(userId) DO UPDATE SET
+    username = excluded.username,
+    total_count = excluded.total_count,
+    total_duration = excluded.total_duration,
+    last_played_at = excluded.last_played_at,
+    updated_at = excluded.updated_at
+` as any);
+const deleteEmptyUserSummary = db.prepare(
+  "DELETE FROM user_activity_summary WHERE userId = ? AND NOT EXISTS (SELECT 1 FROM activity_history WHERE COALESCE(userId, user) = ?)"
+);
+
 export const deleteHistory = (ids: string[]) => {
   const deleteTransaction = db.transaction((idsToDelete: string[]) => {
+    // Capture affected user buckets BEFORE delete so we can rebuild their totals.
+    const affected = new Set<string>();
+    for (const id of idsToDelete) {
+      const rows = selectAffectedUserKeys.all(id);
+      for (const row of rows) affected.add(row.bucketKey);
+    }
     for (const id of idsToDelete) {
       deleteHistoryById.run({ id });
+    }
+    // Rebuild each affected user's summary from the surviving rows; drop the
+    // row entirely if no history remains (avoids stale 0-count entries).
+    const now = Date.now();
+    for (const bucketKey of affected) {
+      rebuildUserSummary.run({ bucketKey, now });
+      deleteEmptyUserSummary.run(bucketKey, bucketKey);
     }
   });
   deleteTransaction(ids);
 };
 
 export const addHistoryEntry = (entry: HistoryEntry) => {
-  insertHistory.run(entry);
+  insertHistoryRow(entry);
 };
 
 const deleteAll = db.prepare("DELETE FROM activity_history");
+const truncateSummary = db.prepare("DELETE FROM user_activity_summary");
 
 export const deleteAllHistory = () => {
-  deleteAll.run();
+  const txn = db.transaction(() => {
+    deleteAll.run();
+    truncateSummary.run();
+  });
+  txn();
+};
+
+/**
+ * Run `fn` inside a single SQLite transaction and return a callable that
+ * executes it. Lets callers (e.g. bulk import) batch many history writes
+ * atomically without importing the raw db handle.
+ */
+export const withTransaction = <Args extends unknown[]>(fn: (...args: Args) => void): ((...args: Args) => void) => {
+  return db.transaction(fn) as (...args: Args) => void;
 };

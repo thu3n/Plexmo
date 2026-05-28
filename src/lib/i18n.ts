@@ -68,7 +68,7 @@ export const translations = {
             all: "All",
             history: "History",
             settings: "Settings",
-            statistics: "Statistics",
+
             noActiveSessions: "No active sessions",
             noTranscoding: "No transcoding",
             cpuChugging: "Crunching CPU",
@@ -93,7 +93,7 @@ export const translations = {
             title: "Settings",
             general: "General",
             servers: "Servers",
-            libraries: "Unified Libraries",
+
             users: "Users",
             jobs: "Jobs",
             import: "Import",
@@ -118,10 +118,7 @@ export const translations = {
             noServers: "It looks like you haven't added any servers yet. To get started, you need to connect your first Plex server.",
             dbError: "Could not connect to database",
             dbErrorDesc: "We are having trouble reading your server list right now, but you can try adding a new server anyway.",
-            librariesDesc: "Create unified groups by selecting libraries from your connected servers. This allows you to browse and view aggregated statistics for content regardless of where it is hosted.",
-            librariesExample: "For example, combine '{0}' from {1} and '{2}' from {3} into a single 'All Movies' group.",
-            librariesExamplePlaceholder: "For example, combine '4K Movies' from Server A and 'Movies' from Server B into a single 'All Movies' group.",
-            noLibraries: "No libraries found",
+
             usersDesc: "Fetched from your linked servers",
             allServers: "All servers",
             status: "Status",

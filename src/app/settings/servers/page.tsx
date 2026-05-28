@@ -3,16 +3,16 @@
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLanguage } from "@/components/LanguageContext";
-import { ServersTab } from "./components/ServersTab";
-import { LibrariesTab } from "./components/LibrariesTab";
-import { UsersTab } from "./components/UsersTab";
+import { ServersTab } from "@/features/server/components/settings/ServersTab";
+
+import { UsersTab } from "@/features/server/components/settings/UsersTab";
 import clsx from "clsx";
 
 function ServersContent() {
     const { t } = useLanguage();
     const searchParams = useSearchParams();
-    const initialTab = (searchParams.get("tab") as "servers" | "libraries" | "users") || "servers";
-    const [activeTab, setActiveTab] = useState<"servers" | "libraries" | "users">(initialTab);
+    const initialTab = (searchParams.get("tab") as "servers" | "users") || "servers";
+    const [activeTab, setActiveTab] = useState<"servers" | "users">(initialTab);
 
     // Sync with URL param if needed or just use internal state
     // For now simple internal state
@@ -20,7 +20,7 @@ function ServersContent() {
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex space-x-1 rounded-xl bg-white/5 p-1 w-fit">
-                {(["servers", "libraries", "users"] as const).map((tab) => (
+                {(["servers", "users"] as const).map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -38,7 +38,6 @@ function ServersContent() {
 
             <div className="mt-2">
                 {activeTab === "servers" && <ServersTab />}
-                {activeTab === "libraries" && <LibrariesTab />}
                 {activeTab === "users" && <UsersTab />}
             </div>
         </div>

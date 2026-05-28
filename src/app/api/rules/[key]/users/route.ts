@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRuleUsers, toggleUserRule } from "@/lib/rules";
+import { Logger } from "@/lib/logger";
 
 export async function GET(
     request: Request,
@@ -26,7 +27,7 @@ export async function POST(
         toggleUserRule(userId, key, Boolean(enabled));
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Error updating user rule:", error);
+        Logger.error("Error updating user rule:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

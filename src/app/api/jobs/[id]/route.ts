@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob } from "@/lib/jobs";
+import { Logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         return NextResponse.json({ job });
 
     } catch (error: any) {
-        console.error("Get Job Error:", error);
+        Logger.error("Get Job Error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
