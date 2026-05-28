@@ -89,8 +89,3 @@ export const getJob = (id: string): Job | undefined => {
     const row = db.prepare<[string], JobRow>("SELECT * FROM jobs WHERE id = ?").get(id);
     return row ? toJob(row) : undefined;
 };
-
-export const getRunningJobForTarget = (type: string, targetId: string): Job | undefined => {
-    const row = db.prepare<[string, string], JobRow>("SELECT * FROM jobs WHERE type = ? AND targetId = ? AND status IN ('pending', 'running')").get(type, targetId);
-    return row ? toJob(row) : undefined;
-};

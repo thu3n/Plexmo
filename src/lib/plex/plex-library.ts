@@ -1,8 +1,8 @@
 import { getSetting } from "../settings";
 import { Logger } from "../logger";
-import { plexFetch, resolveServer, toArray, decodePlexString } from "./plex-client";
+import { plexFetch, toArray, decodePlexString } from "./plex-client";
 import { fetchSessions } from "./plex-sessions";
-import type { PlexServerConfig, PlexMediaContainer, PlexMetadata, LibrarySection } from "./plex-types";
+import type { PlexServerConfig, PlexMediaContainer, PlexMetadata } from "./plex-types";
 
 export const fetchItemMetadata = async (
   ratingKey: string,
@@ -14,7 +14,6 @@ export const fetchItemMetadata = async (
     const video = toArray(container.Video)[0] || toArray(container.Directory)[0] || toArray(container.Track)[0]; // Track for music
 
     if (video) {
-      // Decode common fields
       if (video.title) video.title = decodePlexString(video.title);
       if (video.originalTitle) video.originalTitle = decodePlexString(video.originalTitle);
       if (video.grandparentTitle) video.grandparentTitle = decodePlexString(video.grandparentTitle);
@@ -37,7 +36,6 @@ export const fetchMetadataChildren = async (
   try {
     const xml = (await plexFetch(`/library/metadata/${ratingKey}/children`, {}, server)) as PlexMediaContainer;
     const container = xml.MediaContainer ?? {};
-    // Children can be Directory (Seasons) or Video (Episodes)
     const children = toArray(container.Directory).concat(toArray(container.Video));
 
     return children.map((item) => ({
@@ -53,51 +51,12 @@ export const fetchMetadataChildren = async (
   }
 };
 
-export const fetchLibraries = async (
-  server?: PlexServerConfig,
-): Promise<LibrarySection[]> => {
-  // Now proxies to the database-backed sync function
-  const { syncLibraries, getLibraries } = await import("../libraries");
-
-  if (server) {
-    try {
-      // Try to sync fresh data
-      return await syncLibraries(server);
-    } catch (e) {
-      Logger.warn(`[Plex] Failed to sync libraries for ${server.name}, falling back to DB.`);
-      // Fallback to DB
-      return await getLibraries(server.id);
-    }
-  }
-
-  // If no server specified (legacy usage?), return all from DB?
-  // Or should we throw? The original fetched from "Default Server".
-  // Let's replicate original behavior: resolve server -> sync.
-  const { baseUrl, token } = resolveServer(server);
-  const resolvedServer = { id: "default", name: "Standard Plex", baseUrl, token };
-  return await syncLibraries(resolvedServer);
-};
-
 export const getDashboardSnapshot = async (server?: PlexServerConfig) => {
-  const { getLibraries } = await import("../libraries");
-
-  // Parallel fetch: Sessions (Live) + Libraries (Sync & Persist)
-  // We prefer fresh library data, but if it fails, we use cached.
-  const sessionsPromise = fetchSessions(server);
-
-  // FIX: Use cached libraries to avoid spamming logs on every dashboard poll.
-  // Strict mode: Never sync automatically, only return what is in DB.
-  const librariesPromise = server ? getLibraries(server.id) : Promise.resolve([]);
-
-  const [sessions, libraries] = await Promise.all([
-    sessionsPromise,
-    librariesPromise,
-  ]);
+  const sessions = await fetchSessions(server);
 
   return {
     sessions: sessions.sessions,
     summary: sessions.summary,
-    libraries,
     updatedAt: new Date().toISOString(),
     appName: getSetting("APP_NAME"),
   };

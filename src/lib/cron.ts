@@ -1,48 +1,14 @@
 import { getDashboardSnapshot } from "@/lib/plex";
 import { syncHistory } from "@/lib/history";
 import { db } from "@/lib/db";
-import { getSetting, setSetting } from "@/lib/settings";
 import { runRetentionSweepIfDue } from "@/lib/retention";
 import { setServerSnapshot, markServerFailure } from "@/lib/dashboard-cache";
 import { sendSessionStartNotification, sendSessionStopNotification } from "./discord";
 import type { ServerRow, ConcurrentSnapshotRow, ActiveSessionRow } from "@/lib/db-types";
-// import parser from "cron-parser"; // Removed for dynamic import
 
 export async function runCronJob() {
     try {
-        // Get all servers
         const servers = db.prepare<[], ServerRow>("SELECT * FROM servers").all();
-
-        // Dynamic Import for Cron Parser to avoid Turbopack/Next.js bundling issues
-        const cronParserModule = await import("cron-parser");
-
-        // Deep resolution: check module, module.default, and module.default.default
-        // Deep resolution: check module, module.default, and module.default.default
-        const mod = cronParserModule as any;
-        let parseExpression =
-            mod.parseExpression ||
-            mod.default?.parseExpression ||
-            mod.default?.default?.parseExpression;
-
-        // Fallback for cron-parser v5+ which uses CronExpressionParser.parse
-        if (!parseExpression) {
-            const Parser = mod.CronExpressionParser || mod.default?.CronExpressionParser;
-            if (Parser && typeof Parser.parse === 'function') {
-                parseExpression = Parser.parse.bind(Parser);
-            }
-        }
-
-        if (!parseExpression) {
-            console.error("[Cron] CRITICAL: Could not resolve parseExpression. Please check cron-parser version compatibility.", {
-                keys: Object.keys(mod),
-                hasDefault: !!mod.default
-            });
-        }
-
-        if (!servers.length) {
-            // Proceed anyway for scheduled jobs checking? 
-            // If no servers, sync will fail gracefully inside sync function.
-        }
 
         const results = await Promise.allSettled(
             servers.map(async (server) => {
@@ -127,46 +93,6 @@ export async function runCronJob() {
         } catch (e) {
             console.error("[Cron] Failed to clean stuck sessions:", e);
         }
-
-        // --- Scheduled Job: Library List Sync ---
-        try {
-            // Default to TRUE
-            const syncLibsEnabled = getSetting("job_sync_libraries_enabled") !== "false";
-            // Default 4 AM Daily
-            const syncLibsSchedule = getSetting("job_sync_libraries_cron") || "0 4 * * *";
-
-            if (syncLibsEnabled) {
-                if (!parseExpression) throw new Error("Could not resolve cron-parser parseExpression");
-                const interval = parseExpression(syncLibsSchedule);
-                const prevRunDate = interval.prev().toDate();
-
-                const lastRunTimestamp = getSetting("job_sync_libraries_last_run");
-                const lastRunDate = lastRunTimestamp ? new Date(parseInt(lastRunTimestamp)) : new Date(0);
-
-                if (prevRunDate.getTime() > lastRunDate.getTime()) {
-                    console.log(`[Cron] Triggering Scheduled Library List Sync (Schedule: ${syncLibsSchedule}, Last Run: ${lastRunDate.toISOString()})`);
-
-                    setSetting("job_sync_libraries_last_run", Date.now().toString());
-
-                    const { createJob, getRunningJobForTarget } = await import("@/lib/jobs");
-                    const { syncAllLibraryLists } = await import("@/lib/libraries");
-
-                    if (!getRunningJobForTarget('sync_all_library_lists', 'global')) {
-                        const job = createJob('sync_all_library_lists', 'global');
-                        syncAllLibraryLists(job.id).catch(err => {
-                            console.error("[Cron] Scheduled library list sync failed:", err);
-                        });
-                    } else {
-                        console.log("[Cron] Library list sync already running.");
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("[Cron] Failed to process scheduled library sync:", e);
-        }
-
-        // --- Scheduled Job: Reconcile Statistics (REMOVED) ---
-        // Legacy code removed.
 
         // --- Daily Retention Sweep ---
         // Self-gated to run at most once per local day; cheap no-op otherwise.

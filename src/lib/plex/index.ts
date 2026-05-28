@@ -11,7 +11,6 @@ export type {
   PlexUserRaw,
   PlexServerConfig,
   PlexSession,
-  LibrarySection,
   SessionSummary,
   PlexUser,
 } from "./plex-types";
@@ -28,7 +27,6 @@ export { fetchSessions } from "./plex-sessions";
 export {
   fetchItemMetadata,
   fetchMetadataChildren,
-  fetchLibraries,
   getDashboardSnapshot,
 } from "./plex-library";
 

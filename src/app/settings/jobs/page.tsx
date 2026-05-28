@@ -1,16 +1,22 @@
 "use client";
 
 import useSWR from "swr";
-import { SettingsSection, SettingsCard } from "@/features/settings/components/ui/SettingsShell";
-import { CronControl } from "./CronControl";
+import { SettingsSection } from "@/features/settings/components/ui/SettingsShell";
 import { useLanguage } from "@/components/LanguageContext";
 import { HistoryRepairPanel } from "@/features/settings/components/HistoryRepairPanel";
-// Add ChevronLeft, ChevronRight
-import { RefreshCw, Globe, List, CheckCircle, XCircle, Play, History, Activity, ChevronLeft, ChevronRight, Info, Wrench } from "lucide-react";
+import { RefreshCw, CheckCircle, XCircle, History, Activity, ChevronLeft, ChevronRight, Wrench } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import clsx from "clsx";
-import { useState, useMemo } from "react";
-import cronstrue from "cronstrue";
+import { useState } from "react";
+
+type JobRecord = {
+    id: string;
+    type: string;
+    status: string;
+    progress: number;
+    message: string | null;
+    updatedAt: string;
+};
 
 const fetchJson = async <T,>(url: string): Promise<T> => {
     const response = await fetch(url, { cache: "no-store" });
@@ -20,26 +26,12 @@ const fetchJson = async <T,>(url: string): Promise<T> => {
 
 export default function JobsSettingsPage() {
     const { t } = useLanguage();
-    const { data, mutate, isLoading } = useSWR<{ jobs: any[] }>("/api/jobs", fetchJson, { refreshInterval: 2000 });
-    const { data: settings, mutate: mutateSettings } = useSWR<Record<string, string>>("/api/settings", fetchJson);
+    const { data, mutate, isLoading } = useSWR<{ jobs: JobRecord[] }>("/api/jobs", fetchJson, { refreshInterval: 2000 });
     const [currentPage, setCurrentPage] = useState(1);
-
-    const activeListSync = data?.jobs?.find(j => j.type === 'sync_all_library_lists' && ['running', 'pending'].includes(j.status));
 
     const ITEMS_PER_PAGE = 10;
     const totalPages = Math.ceil((data?.jobs?.length || 0) / ITEMS_PER_PAGE);
     const paginatedJobs = data?.jobs?.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-
-    const handleJob = async (type: string) => {
-        try {
-            await fetch("/api/jobs", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type }),
-            });
-            mutate();
-        } catch { alert("Failed to start job"); }
-    };
 
     const handleRunLinkHistory = async () => {
         if (!confirm("This will process unlinked history items. Continue?")) return;
@@ -47,63 +39,22 @@ export default function JobsSettingsPage() {
             const res = await fetch("/api/admin/link-history", { method: "POST" });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || "Failed");
-
             mutate();
-            alert("Job started"); // Simple feedback
-        } catch (e: any) {
-            alert(`Failed to start job: ${e.message}`);
+            alert("Job started");
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            alert(`Failed to start job: ${message}`);
         }
     };
-
-    const handleSaveSetting = async (key: string, value: string) => {
-        try {
-            await fetch("/api/settings", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ key, value }),
-            });
-            mutateSettings();
-        } catch { alert("Failed to save setting"); }
-    };
-
-    const syncLibsEnabled = settings?.["job_sync_libraries_enabled"] !== "false";
-    const syncLibsTime = settings?.["job_sync_libraries_cron"] || "0 4 * * *";
 
     return (
         <div className="space-y-12">
             <SettingsSection
                 title={t("settings.jobs")}
-                description="Manage background tasks and synchronization schedules."
+                description="Maintenance tools and background task history."
             >
-                <div className="bg-zinc-900/30 border border-white/5 rounded-2xl overflow-hidden">
-                    {/* Table Header */}
-                    <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr] gap-4 px-6 py-4 bg-white/5 border-b border-white/5 text-xs font-bold text-white/40 uppercase tracking-wider">
-                        <div>Job Name</div>
-                        <div>Schedule</div>
-                        <div>Status</div>
-                        <div className="text-right">Actions</div>
-                    </div>
-
-                    {/* Job Rows */}
-                    <div className="divide-y divide-white/5">
-                        <JobRow
-                            title="Sync Library Lists"
-                            description="Refreshes the list of libraries available on your servers. Does not sync content."
-                            type="PROCESS"
-                            color="amber"
-                            cron={syncLibsTime}
-                            enabled={syncLibsEnabled}
-                            activeJob={activeListSync}
-                            onStart={() => handleJob('sync_all_library_lists')}
-                            onEnabledChange={(v: boolean) => handleSaveSetting("job_sync_libraries_enabled", String(v))}
-                            onCronChange={(v: string) => handleSaveSetting("job_sync_libraries_cron", v)}
-                            defaultCron="0 4 * * *"
-                        />
-                    </div>
-                </div>
-
                 {/* Maintenance Tools */}
-                <div className="mt-12">
+                <div>
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-white/5 rounded-lg">
                             <Wrench className="w-5 h-5 text-white/70" />
@@ -111,12 +62,18 @@ export default function JobsSettingsPage() {
                         <h3 className="text-lg font-bold text-white">Maintenance Tools</h3>
                     </div>
                     <HistoryRepairPanel />
+                    <button
+                        onClick={handleRunLinkHistory}
+                        className="mt-4 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors border border-white/5"
+                    >
+                        Link unlinked history
+                    </button>
                 </div>
 
                 <hr className="my-12 border-white/5" />
 
                 {/* History Section */}
-                <div className="mt-12">
+                <div>
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-white/5 rounded-lg">
                             <History className="w-5 h-5 text-white/70" />
@@ -174,7 +131,6 @@ export default function JobsSettingsPage() {
                                     ))}
                                 </div>
 
-                                {/* Pagination Controls */}
                                 {totalPages > 1 && (
                                     <div className="flex items-center justify-between p-4 border-t border-white/5 bg-white/[0.02]">
                                         <button
@@ -203,125 +159,6 @@ export default function JobsSettingsPage() {
                     </div>
                 </div>
             </SettingsSection>
-        </div>
-    );
-}
-
-import { formatCron } from "./utils";
-
-// ... existing imports
-
-// ...
-
-function JobRow({
-    title,
-    description,
-    type,
-    color,
-    cron,
-    enabled,
-    activeJob,
-    onStart,
-    onEnabledChange,
-    onCronChange,
-    defaultCron
-}: any) {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [showInfo, setShowInfo] = useState(false);
-
-    // Get next run time (approximate, for display)
-    const nextRun = useMemo(() => {
-        return formatCron(cron);
-    }, [cron]);
-
-
-    return (
-        <div className="group bg-transparent hover:bg-white/[0.02] transition-colors relative">
-            {/* Main Row */}
-            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr] gap-4 px-6 py-4 items-center">
-
-                {/* Job Name */}
-                <div className="font-medium text-sm text-white flex items-center gap-2">
-                    <span>{title}</span>
-                    <button
-                        onClick={() => setShowInfo(!showInfo)}
-                        className={clsx(
-                            "p-1 rounded-full transition-all",
-                            showInfo ? "bg-white/10 text-white" : "text-white/20 hover:text-white/60 hover:bg-white/5"
-                        )}
-                    >
-                        <Info className="w-3.5 h-3.5" />
-                    </button>
-                </div>
-
-                {/* Schedule */}
-                <div className="text-sm text-white/60 truncate">
-                    {enabled ? nextRun : <span className="text-white/20">Disabled</span>}
-                </div>
-
-                {/* Status */}
-                <div>
-                    {activeJob ? (
-                        <span className={clsx("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-zinc-800", color === 'emerald' ? "text-emerald-400" : "text-amber-400")}>
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            Running
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-zinc-800 text-white/40 text-[10px] font-bold uppercase tracking-wider">
-                            Idle
-                        </span>
-                    )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center justify-end gap-2">
-                    <button
-                        onClick={() => setIsExpanded(!isExpanded)}
-                        className={clsx(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
-                            isExpanded ? "bg-amber-500 text-black border-amber-500 hover:bg-amber-400" : "bg-transparent text-amber-500 border-amber-500/20 hover:bg-amber-500/10"
-                        )}
-                    >
-                        {isExpanded ? "Close" : "Edit"}
-                    </button>
-
-                    <button
-                        onClick={onStart}
-                        disabled={!!activeJob}
-                        className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors border border-white/5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Play className="w-3 h-3" />
-                        <span>Run</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Information Section */}
-            {showInfo && (
-                <div className="px-6 pb-4 -mt-2">
-                    <div className="text-xs text-white/50 pl-2 border-l-2 border-white/10">
-                        {description}
-                    </div>
-                </div>
-            )}
-
-            {/* Expanded Edit Section */}
-            <div className={clsx(
-                "grid transition-[grid-template-rows] duration-300 ease-out",
-                isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-            )}>
-                <div className="overflow-hidden bg-black/20">
-                    <div className="px-6 py-4 border-t border-white/5 mx-6 mb-4 rounded-xl relative">
-                        <CronControl
-                            enabled={enabled}
-                            cronExpression={cron}
-                            onEnabledChange={onEnabledChange}
-                            onCronChange={onCronChange}
-                            defaultCron={defaultCron}
-                        />
-                    </div>
-                </div>
-            </div>
         </div>
     );
 }

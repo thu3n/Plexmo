@@ -69,18 +69,6 @@ export interface ActiveSessionRow {
   pausedSince: number | null;
 }
 
-export interface LibraryRow {
-  key: string;
-  title: string;
-  type: string | null;
-  agent: string | null;
-  count: number;
-  refreshing: number;
-  serverId: string;
-  serverName: string | null;
-  updatedAt: string;
-}
-
 export interface JobRow {
   id: string;
   type: string;
@@ -92,19 +80,6 @@ export interface JobRow {
   totalItems: number;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface LibraryItemRow {
-  ratingKey: string;
-  libraryKey: string;
-  serverId: string;
-  title: string;
-  year: number | null;
-  thumb: string | null;
-  type: string | null;
-  addedAt: string | null;
-  updatedAt: string;
-  meta_json: string | null;
 }
 
 export interface UserRow {

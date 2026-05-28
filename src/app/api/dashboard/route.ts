@@ -75,7 +75,6 @@ export async function GET(request: Request) {
         {
           sessions: snapshot.sessions,
           summary: snapshot.summary,
-          libraries: snapshot.libraries,
           updatedAt: new Date(snapshot.cachedAt).toISOString(),
           appName: snapshot.appName,
           server: {
@@ -94,7 +93,6 @@ export async function GET(request: Request) {
       return NextResponse.json({
         sessions: [],
         summary: { active: 0, directPlay: 0, transcoding: 0, paused: 0, bandwidth: 0, serverName: "Alla servrar" },
-        libraries: [],
         updatedAt: new Date().toISOString(),
         server: { id: "all", name: "Alla servrar", baseUrl: "" },
         appName: (await import("@/lib/settings")).getSetting("APP_NAME") || "Plexmo"
@@ -104,37 +102,26 @@ export async function GET(request: Request) {
     // Aggregated view: read-only from cache. Servers without a snapshot yet
     // are skipped (cron will fill them in the background). Unreachable servers
     // never block the request.
-    const present = servers
-      .map((server) => {
-        const snapshot = getServerSnapshot(server.id);
-        return snapshot ? { server, snapshot } : null;
-      })
-      .filter((x): x is { server: typeof servers[number]; snapshot: CachedServerSnapshot } => x !== null);
+    const snapshots = servers
+      .map((server) => getServerSnapshot(server.id))
+      .filter((s): s is CachedServerSnapshot => s !== undefined);
 
     const aggregated = {
-      sessions: present.flatMap(({ snapshot }) => snapshot.sessions),
-      summary: present.reduce(
-        (acc, { snapshot }) => ({
-          active: acc.active + snapshot.summary.active,
-          directPlay: acc.directPlay + snapshot.summary.directPlay,
-          transcoding: acc.transcoding + snapshot.summary.transcoding,
-          paused: acc.paused + snapshot.summary.paused,
-          bandwidth: acc.bandwidth + snapshot.summary.bandwidth,
+      sessions: snapshots.flatMap((s) => s.sessions),
+      summary: snapshots.reduce(
+        (acc, s) => ({
+          active: acc.active + s.summary.active,
+          directPlay: acc.directPlay + s.summary.directPlay,
+          transcoding: acc.transcoding + s.summary.transcoding,
+          paused: acc.paused + s.summary.paused,
+          bandwidth: acc.bandwidth + s.summary.bandwidth,
           serverName: "Alla servrar",
         }),
         { active: 0, directPlay: 0, transcoding: 0, paused: 0, bandwidth: 0 },
       ),
-      libraries: present.flatMap(({ server, snapshot }) =>
-        snapshot.libraries.map((lib) => ({
-          ...lib,
-          title: lib.title,
-          serverId: server.id,
-          serverName: server.name,
-        })),
-      ),
       updatedAt: new Date(
-        present.length
-          ? Math.min(...present.map(({ snapshot }) => snapshot.cachedAt))
+        snapshots.length
+          ? Math.min(...snapshots.map((s) => s.cachedAt))
           : Date.now(),
       ).toISOString(),
       server: {
@@ -142,7 +129,7 @@ export async function GET(request: Request) {
         name: "Alla servrar",
         baseUrl: "unified",
       },
-      appName: present.find(({ snapshot }) => snapshot.appName)?.snapshot.appName || "Plexmo",
+      appName: snapshots.find((s) => s.appName)?.appName || "Plexmo",
     };
 
     checkAndLogViolations(aggregated.sessions);

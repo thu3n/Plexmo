@@ -31,15 +31,13 @@ type StatsParams = { username: string; userId: string };
 type PeriodStatsParams = StatsParams & { since: number };
 
 const getStreakActivity = db.prepare(`
-    SELECT 
-        strftime('%Y-%m-%d', datetime(h.startTime / 1000, 'unixepoch', 'localtime')) as date,
-        h.duration as watchedDuration,
-        h.meta_json as historyMeta,
-        l.meta_json as libraryMeta
-    FROM activity_history h
-    LEFT JOIN library_items l ON h.ratingKey = l.ratingKey AND h.serverId = l.serverId
-    WHERE (h.user = @username OR h.userId = @userId)
-    ORDER BY h.startTime ASC
+    SELECT
+        strftime('%Y-%m-%d', datetime(startTime / 1000, 'unixepoch', 'localtime')) as date,
+        duration as watchedDuration,
+        meta_json as historyMeta
+    FROM activity_history
+    WHERE (user = @username OR userId = @userId)
+    ORDER BY startTime ASC
 `);
 
 const getStatsForPeriod = db.prepare<PeriodStatsParams, PeriodStatsRow>(`
@@ -105,7 +103,6 @@ export const calculateStreaks = (params: { username: string; userId: string }) =
         date: string;
         watchedDuration: number;
         historyMeta: string | null;
-        libraryMeta: string | null
     }[];
 
     // Identify valid days (Set to avoid duplicates)
@@ -123,15 +120,7 @@ export const calculateStreaks = (params: { username: string; userId: string }) =
             } catch (e) { }
         }
 
-        // 2. Fallback to Library Meta
-        if (!totalDurationMs && entry.libraryMeta) {
-            try {
-                const meta = JSON.parse(entry.libraryMeta);
-                if (meta.duration) totalDurationMs = Number(meta.duration);
-            } catch (e) { }
-        }
-
-        // 3. Check Percentage (watchedDuration is in seconds, totalDurationMs is in ms)
+        // 2. Check Percentage (watchedDuration is in seconds, totalDurationMs is in ms)
         if (totalDurationMs > 0) {
             const watchedMs = entry.watchedDuration * 1000;
             const percentage = watchedMs / totalDurationMs;
@@ -139,7 +128,7 @@ export const calculateStreaks = (params: { username: string; userId: string }) =
                 isValid = true;
             }
         } else {
-            // 4. Fallback: Fixed 10 minutes (600 seconds)
+            // 3. Fallback: Fixed 10 minutes (600 seconds)
             if (entry.watchedDuration >= 600) {
                 isValid = true;
             }
