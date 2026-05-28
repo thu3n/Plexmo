@@ -128,57 +128,6 @@ export async function runCronJob() {
             console.error("[Cron] Failed to clean stuck sessions:", e);
         }
 
-        // --- Scheduled Jobs ---
-        try {
-            // Default to TRUE (enabled) if not explicitly set to "false"
-            const syncEnabled = getSetting("job_sync_content_enabled") !== "false";
-            // Use new key for cron, fallback to default 3 AM Daily
-            const syncSchedule = getSetting("job_sync_content_cron") || "0 3 * * *";
-
-            // Resolve parser function robustly
-            // const parseExpression = (parser as any).parseExpression || (parser as any).default?.parseExpression; // Moved to top
-
-            if (syncEnabled) {
-                if (!parseExpression) throw new Error("Could not resolve cron-parser parseExpression");
-                const interval = parseExpression(syncSchedule);
-                // Get the last scheduled runtime relative to NOW
-                const prevRunDate = interval.prev().toDate();
-
-                const lastRunTimestamp = getSetting("job_sync_content_last_run");
-                const lastRunDate = lastRunTimestamp ? new Date(parseInt(lastRunTimestamp)) : new Date(0);
-
-                // If the scheduled time (prev) is Newer than the last actual run time
-                // AND it is reasonably recent (e.g. within last 5 minutes) to avoid running immediate catch-up for very old misses if app was off?
-                // Actually, if app was off, we usually DO want to catch up once. 
-                // But simplified: if (prev > lastRun) -> Run.
-
-                // Safety: To prevent re-running same job if cron resolution is coarse or fast calls:
-                // We ensure prevRunDate is strictly greater than lastRunDate
-                if (prevRunDate.getTime() > lastRunDate.getTime()) {
-
-                    console.log(`[Cron] Triggering Scheduled Global Content Sync (Schedule: ${syncSchedule}, Last Run: ${lastRunDate.toISOString()}, Target: ${prevRunDate.toISOString()})`);
-
-                    // Update last run to NOW (or to the schedule time? NOW is safer to avoid loops if clock skew)
-                    setSetting("job_sync_content_last_run", Date.now().toString());
-
-                    // Start Job
-                    const { createJob, getRunningJobForTarget } = await import("@/lib/jobs");
-                    const { syncAllLibrariesContent } = await import("@/lib/libraries");
-
-                    if (!getRunningJobForTarget('sync_all_content', 'global')) {
-                        const job = createJob('sync_all_content', 'global');
-                        syncAllLibrariesContent(job.id).catch(err => {
-                            console.error("[Cron] Scheduled global content sync failed:", err);
-                        });
-                    } else {
-                        console.log("[Cron] Job already running.");
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("[Cron] Failed to process scheduled global sync:", e);
-        }
-
         // --- Scheduled Job: Library List Sync ---
         try {
             // Default to TRUE

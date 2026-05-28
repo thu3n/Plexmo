@@ -24,7 +24,6 @@ export default function JobsSettingsPage() {
     const { data: settings, mutate: mutateSettings } = useSWR<Record<string, string>>("/api/settings", fetchJson);
     const [currentPage, setCurrentPage] = useState(1);
 
-    const activeGlobalSync = data?.jobs?.find(j => j.type === 'sync_all_content' && ['running', 'pending'].includes(j.status));
     const activeListSync = data?.jobs?.find(j => j.type === 'sync_all_library_lists' && ['running', 'pending'].includes(j.status));
 
     const ITEMS_PER_PAGE = 10;
@@ -32,7 +31,6 @@ export default function JobsSettingsPage() {
     const paginatedJobs = data?.jobs?.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     const handleJob = async (type: string) => {
-        if (type === 'sync_all_content' && !confirm("This will scan ALL content. Continue?")) return;
         try {
             await fetch("/api/jobs", {
                 method: "POST",
@@ -68,9 +66,6 @@ export default function JobsSettingsPage() {
         } catch { alert("Failed to save setting"); }
     };
 
-    const syncEnabled = settings?.["job_sync_content_enabled"] !== "false";
-    const syncTime = settings?.["job_sync_content_cron"] || "0 3 * * *";
-
     const syncLibsEnabled = settings?.["job_sync_libraries_enabled"] !== "false";
     const syncLibsTime = settings?.["job_sync_libraries_cron"] || "0 4 * * *";
 
@@ -92,19 +87,6 @@ export default function JobsSettingsPage() {
                     {/* Job Rows */}
                     <div className="divide-y divide-white/5">
                         <JobRow
-                            title="Global Content Sync"
-                            description="Synchronizes all movies and TV shows from connected servers into the local database."
-                            type="PROCESS"
-                            color="emerald"
-                            cron={syncTime}
-                            enabled={syncEnabled}
-                            activeJob={activeGlobalSync}
-                            onStart={() => handleJob('sync_all_content')}
-                            onEnabledChange={(v: boolean) => handleSaveSetting("job_sync_content_enabled", String(v))}
-                            onCronChange={(v: string) => handleSaveSetting("job_sync_content_cron", v)}
-                            defaultCron="0 3 * * *"
-                        />
-                        <JobRow
                             title="Sync Library Lists"
                             description="Refreshes the list of libraries available on your servers. Does not sync content."
                             type="PROCESS"
@@ -112,6 +94,8 @@ export default function JobsSettingsPage() {
                             cron={syncLibsTime}
                             enabled={syncLibsEnabled}
                             activeJob={activeListSync}
+                            onStart={() => handleJob('sync_all_library_lists')}
+                            onEnabledChange={(v: boolean) => handleSaveSetting("job_sync_libraries_enabled", String(v))}
                             onCronChange={(v: string) => handleSaveSetting("job_sync_libraries_cron", v)}
                             defaultCron="0 4 * * *"
                         />
