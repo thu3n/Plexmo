@@ -14,7 +14,14 @@ const getCurrentLogLevel = (): number => {
 
 const formatMessage = (level: LogLevel, message: string, meta?: any) => {
     const timestamp = new Date().toISOString();
-    const metaString = meta ? ` ${JSON.stringify(meta)}` : '';
+    // Error objects don't serialize via JSON.stringify (message/stack aren't
+    // enumerable own properties). Surface them explicitly so logs stay useful.
+    let metaString = '';
+    if (meta instanceof Error) {
+        metaString = ` ${meta.message}${meta.stack ? `\n${meta.stack}` : ''}`;
+    } else if (meta !== undefined) {
+        metaString = ` ${JSON.stringify(meta)}`;
+    }
     return `[${timestamp}] [${level}] ${message}${metaString}`;
 };
 
