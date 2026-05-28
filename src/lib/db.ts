@@ -73,6 +73,23 @@ try {
 
   dbInstance = db;
 
+  // One-shot post-migration diagnostic. Single log line covering the things
+  // we'd otherwise reach for `pg_stat_user_tables` to get: file size, the
+  // hot table's row count, and the largest append-only table's size.
+  try {
+    const pageCount = (db.pragma("page_count", { simple: true }) as number) ?? 0;
+    const pageSize = (db.pragma("page_size", { simple: true }) as number) ?? 0;
+    const fileBytes = pageCount * pageSize;
+    const fileMb = (fileBytes / (1024 * 1024)).toFixed(1);
+    const historyRows = (db.prepare("SELECT COUNT(*) as c FROM activity_history").get() as { c: number }).c;
+    const snapshotRows = (db.prepare("SELECT COUNT(*) as c FROM concurrent_snapshots").get() as { c: number }).c;
+    Logger.info(
+      `[DB] Stats: ${fileMb} MB on disk, ${historyRows} history rows, ${snapshotRows} concurrent_snapshot rows.`
+    );
+  } catch (e) {
+    Logger.error("[DB] Failed to read startup stats:", e);
+  }
+
   // Ensure Tautulli import directory exists
   try {
     const importDir = path.join(process.cwd(), "config", "import", "Tautulli");

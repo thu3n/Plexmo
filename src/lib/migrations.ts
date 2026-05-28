@@ -306,15 +306,81 @@ export const migrations: Migration[] = [
     },
   },
 
-  // Add new migrations below. Example:
-  //
-  // {
-  //   version: 2,
-  //   name: "add_session_bandwidth",
-  //   up: (db) => {
-  //     db.exec("ALTER TABLE active_sessions ADD COLUMN bandwidth INTEGER");
-  //   },
-  // },
+  {
+    version: 2,
+    name: "history_user_stoptime_indexes",
+    up: (db) => {
+      // Serves getUserStats hot path (period sums, platform/player GROUP BY,
+      // recently-played ORDER BY). The existing idx_history_dup_check leads
+      // with (user, ratingKey, ...) so it can't satisfy WHERE user=? AND
+      // stopTime>?. Both `user` and `userId` variants because user_stats
+      // queries are `WHERE user = @username OR userId = @userId` — SQLite
+      // uses one index per OR branch.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_history_userid_stoptime
+          ON activity_history(userId, stopTime DESC);
+        CREATE INDEX IF NOT EXISTS idx_history_user_stoptime
+          ON activity_history(user, stopTime DESC);
+      `);
+    },
+  },
+  {
+    version: 3,
+    name: "summary_table_and_retention",
+    up: (db) => {
+      // Promote `player` from json_extract(meta_json,'$.player') to a real
+      // column so getPlayerStats can use the (user, stopTime) index instead
+      // of a full scan + per-row JSON eval.
+      db.exec(`ALTER TABLE activity_history ADD COLUMN player TEXT`);
+      db.prepare(`
+        UPDATE activity_history
+        SET player = json_extract(meta_json, '$.player')
+        WHERE meta_json IS NOT NULL AND player IS NULL
+      `).run();
+
+      // Materialized per-user totals updated on every history insert. Same
+      // pattern as streak_cache. Period stats (24h/7d/30d) stay on the
+      // indexed query — a rolling window would need invalidation/decay logic
+      // not worth the complexity at this data volume.
+      db.exec(`
+        CREATE TABLE user_activity_summary (
+          userId TEXT PRIMARY KEY,
+          username TEXT,
+          total_count INTEGER NOT NULL DEFAULT 0,
+          total_duration INTEGER NOT NULL DEFAULT 0,
+          last_played_at INTEGER,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+
+      // Backfill the summary from existing history. Bucket by COALESCE(userId, user)
+      // so old rows without userId (pre-backfill imports) still aggregate sensibly.
+      db.prepare(`
+        INSERT INTO user_activity_summary (userId, username, total_count, total_duration, last_played_at, updated_at)
+        SELECT
+          COALESCE(userId, user) as userId,
+          MAX(user) as username,
+          COUNT(*) as total_count,
+          SUM(duration) as total_duration,
+          MAX(stopTime) as last_played_at,
+          ? as updated_at
+        FROM activity_history
+        GROUP BY COALESCE(userId, user)
+      `).run(Date.now());
+
+      // Retention sweep targets (see cron.ts). concurrent_snapshots has no
+      // timestamp index; rule_events.triggeredAt and jobs.updatedAt are
+      // TEXT ISO timestamps, lexicographically sortable.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_concurrent_snapshots_timestamp
+          ON concurrent_snapshots(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_rule_events_triggered_at
+          ON rule_events(triggeredAt);
+        CREATE INDEX IF NOT EXISTS idx_jobs_status_updated
+          ON jobs(status, updatedAt);
+      `);
+    },
+  },
 ];
 
 /**

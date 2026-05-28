@@ -2,6 +2,7 @@ import { getDashboardSnapshot } from "@/lib/plex";
 import { syncHistory } from "@/lib/history";
 import { db } from "@/lib/db";
 import { getSetting, setSetting } from "@/lib/settings";
+import { runRetentionSweepIfDue } from "@/lib/retention";
 import { sendSessionStartNotification, sendSessionStopNotification } from "./discord";
 import type { ServerRow, ConcurrentSnapshotRow, ActiveSessionRow } from "@/lib/db-types";
 // import parser from "cron-parser"; // Removed for dynamic import
@@ -214,7 +215,13 @@ export async function runCronJob() {
         // --- Scheduled Job: Reconcile Statistics (REMOVED) ---
         // Legacy code removed.
 
-
+        // --- Daily Retention Sweep ---
+        // Self-gated to run at most once per local day; cheap no-op otherwise.
+        try {
+            runRetentionSweepIfDue();
+        } catch (e) {
+            console.error("[Cron] Retention sweep failed:", e);
+        }
 
 
         return {

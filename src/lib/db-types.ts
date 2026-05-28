@@ -48,6 +48,7 @@ export interface ActivityHistoryRow {
   tmdb_id: string | null;
   tvdb_id: string | null;
   repair_status: string | null;
+  player: string | null;
 }
 
 export interface ActiveSessionRow {
@@ -197,6 +198,15 @@ export interface StreakCacheRow {
   currentStreak: number;
   longestStreak: number;
   updatedAt: number;
+}
+
+export interface UserActivitySummaryRow {
+  userId: string;
+  username: string | null;
+  total_count: number;
+  total_duration: number;
+  last_played_at: number | null;
+  updated_at: number;
 }
 
 export interface SchemaMigrationRow {

@@ -48,10 +48,17 @@ const getStatsForPeriod = db.prepare<PeriodStatsParams, PeriodStatsRow>(`
     WHERE (user = @username OR userId = @userId) AND stopTime > @since
 `);
 
+// All-time totals come from the materialized user_activity_summary table —
+// see migration v3 and insertHistoryRow() in history.ts. The summary is keyed
+// by COALESCE(userId, user), so we look up under both possible bucket keys
+// (matched user's id, or the raw username for legacy rows that never got a
+// userId backfill). SUM() coalesces the two rows in the rare both-exist case.
 const getAllTimeStats = db.prepare<StatsParams, PeriodStatsRow>(`
-    SELECT COUNT(*) as count, SUM(duration) as duration
-    FROM activity_history
-    WHERE (user = @username OR userId = @userId)
+    SELECT
+      COALESCE(SUM(total_count), 0) as count,
+      COALESCE(SUM(total_duration), 0) as duration
+    FROM user_activity_summary
+    WHERE userId = @userId OR userId = @username
 `);
 
 const getPlatformStats = db.prepare(`
@@ -62,10 +69,13 @@ const getPlatformStats = db.prepare(`
     ORDER BY count DESC
 `);
 
+// Reads the promoted `player` column (migration v3) instead of evaluating
+// json_extract per row, so the (user/userId, stopTime) indexes from migration
+// v2 can serve the WHERE.
 const getPlayerStats = db.prepare(`
-    SELECT json_extract(meta_json, '$.player') as player, COUNT(*) as count
+    SELECT player, COUNT(*) as count
     FROM activity_history
-    WHERE (user = @username OR userId = @userId) AND meta_json IS NOT NULL
+    WHERE (user = @username OR userId = @userId) AND player IS NOT NULL
     GROUP BY player
     ORDER BY count DESC
 `);
