@@ -1,0 +1,57 @@
+{
+  "name": "plexmo",
+  "version": "1.1.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thu3n/plexmo.git"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest",
+    "release": "node scripts/release.mjs",
+    "generate:splash": "node scripts/generate-splash.mjs"
+  },
+  "dependencies": {
+    "@serwist/next": "^9.5.11",
+    "adm-zip": "^0.6.0",
+    "better-sqlite3": "^11.10.0",
+    "clsx": "^2.1.1",
+    "fast-xml-parser": "^5.3.2",
+    "framer-motion": "^12.23.26",
+    "jose": "^6.1.3",
+    "lucide-react": "^0.562.0",
+    "next": "^16.0.10",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "recharts": "^3.9.2",
+    "swr": "^2.3.7",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.1",
+    "@types/adm-zip": "^0.5.8",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/busboy": "^1.5.4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.1.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.7",
+    "jsdom": "^27.4.0",
+    "serwist": "^9.5.11",
+    "sharp": "^0.35.3",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.0.4",
+    "vitest": "^4.0.17"
+  }
+}

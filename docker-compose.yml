@@ -1,0 +1,19 @@
+
+version: '3'
+services:
+  plexmo:
+    image: ghcr.io/thu3n/plexmo:latest
+    container_name: plexmo
+    environment:
+      - TZ=Europe/Stockholm
+      - PORT=3000
+      # [OPTIONAL] Sets the default start folder for the file browser
+      # - TAUTULLI_PATH=/mnt/tautulli
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config:/app/config
+      # [REQUIRED for Import] Mount your Tautulli folder so the container can see it.
+      # Format: /path/on/host:/path/in/container:ro
+      # - /path/to/tautulli:/mnt/tautulli:ro
+    restart: unless-stopped
