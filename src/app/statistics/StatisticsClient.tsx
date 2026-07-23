@@ -13,6 +13,7 @@ import { WatchStatsSection } from "@/features/stats/components/overview/WatchSta
 import { TopListsSection } from "@/features/stats/components/TopListsSection";
 import { daysForStatsPeriod, type StatsPeriodKey } from "@/features/stats/lib/stats-periods";
 import { Skeleton } from "@/components/Skeleton";
+import { fetchJsonOrThrow as fetcher } from "@/lib/swr-fetch";
 
 // Code-split, not viewport-lazy: the section still mounts immediately, but the
 // ~380KB recharts vendor chunk no longer parses on the navigation tap itself —
@@ -31,8 +32,6 @@ const ChartsSection = dynamic(
         ),
     },
 );
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function StatisticsClient() {
     const [period, setPeriod] = useState<StatsPeriodKey>("30d");

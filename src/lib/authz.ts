@@ -60,6 +60,25 @@ export const resolveScope = (user: Pick<SessionUser, "id" | "email" | "role"> | 
 export const isOwnerLike = (user: { scope: AccessScope }): boolean =>
   user.scope.role === "owner" || user.scope.role === "setup" || user.scope.role === "api";
 
+/**
+ * First-server completion: may this session be upgraded to a normal owner
+ * session? Only when the just-connected server provably belongs to the
+ * session's own account (the submitted admin token resolved to their id).
+ * Covers both fresh-install `setup` sessions and invite-minted `onboarding`
+ * sessions — without the upgrade, a `setup` cookie turns into a 401 on every
+ * data route the moment the first server exists (the request guard kills
+ * setup tokens once getServerCount() > 0). A foreign token never upgrades:
+ * that is the anti-escalation backstop.
+ */
+export const canUpgradeSessionToOwner = (
+  scopeRole: AccessScope["role"],
+  ownerAccountId: string | null,
+  userId: string,
+): boolean =>
+  (scopeRole === "setup" || scopeRole === "onboarding") &&
+  !!ownerAccountId &&
+  ownerAccountId === userId;
+
 export const canAccessServer = (scope: AccessScope, serverId: string): boolean =>
   scope.serverIds === "all" || scope.serverIds.includes(serverId);
 

@@ -32,11 +32,13 @@ export async function register() {
 
             // 4. Library inventory sync — cheap enough to run at startup, then
             // every 6 hours (library churn is slow compared to sessions).
+            // Tracked runs record jobs-table rows (Settings → Jobs).
             const LIBRARY_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
             const { syncAllLibraries } = await import('@/lib/library/library-sync');
-            syncAllLibraries().catch(e => console.error("Library sync failed:", e));
+            const { startTrackedLibrarySync } = await import('@/lib/library/sync-job');
+            startTrackedLibrarySync("all libraries", syncAllLibraries);
             globalAny.__plexmo_library_interval = setInterval(() => {
-                syncAllLibraries().catch(e => console.error("Library sync failed:", e));
+                startTrackedLibrarySync("all libraries", syncAllLibraries);
             }, LIBRARY_SYNC_INTERVAL_MS);
         }
     }

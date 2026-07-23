@@ -28,6 +28,20 @@ export default function JobsSettingsPage() {
     const { t } = useLanguage();
     const { data, isLoading } = useSWR<{ jobs: JobRecord[] }>("/api/jobs", fetchJson, { refreshInterval: 2000 });
     const [currentPage, setCurrentPage] = useState(1);
+    const [syncKicked, setSyncKicked] = useState(false);
+
+    // The 2s jobs poll makes the new run visible almost immediately; the brief
+    // disabled window just prevents double-clicks (the API also rejects
+    // overlapping syncs with a 409).
+    const triggerLibrarySync = async () => {
+        setSyncKicked(true);
+        try {
+            await fetch("/api/libraries/sync", { method: "POST" });
+        } catch {
+            // Surfaced via the job list; nothing useful to render here.
+        }
+        setTimeout(() => setSyncKicked(false), 3000);
+    };
 
     const ITEMS_PER_PAGE = 10;
     const totalPages = Math.ceil((data?.jobs?.length || 0) / ITEMS_PER_PAGE);
@@ -46,6 +60,15 @@ export default function JobsSettingsPage() {
                             <History className="w-5 h-5 text-white/70" />
                         </div>
                         <h3 className="text-lg font-bold text-white">Execution History</h3>
+                        <button
+                            onClick={triggerLibrarySync}
+                            disabled={syncKicked}
+                            title="Run a library inventory sync now"
+                            className="ml-auto flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white disabled:opacity-60 transition-colors"
+                        >
+                            <RefreshCw className={syncKicked ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
+                            Sync libraries
+                        </button>
                     </div>
 
                     <div className="bg-zinc-900/30 rounded-2xl border border-white/5 overflow-hidden">

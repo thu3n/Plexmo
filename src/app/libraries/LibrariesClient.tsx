@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
+import { RefreshCw } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 import { HeaderNav } from "@/components/HeaderNav";
 import { Skeleton } from "@/components/Skeleton";
@@ -18,7 +20,22 @@ const fetcher = async (url: string) => {
 };
 
 export function LibrariesClient() {
-    const { data, error, isLoading } = useSWR<LibrariesResponse>("/api/libraries", fetcher, { revalidateOnFocus: false });
+    const { data, error, isLoading } = useSWR<LibrariesResponse>("/api/libraries", fetcher, {
+        revalidateOnFocus: false,
+        // While the inventory is empty (fresh install waiting on its first
+        // sync), keep polling so sections appear as the sync lands.
+        refreshInterval: (latest) => (latest?.sections?.length ? 0 : 5000),
+    });
+    const [syncRequested, setSyncRequested] = useState(false);
+
+    const triggerSync = async () => {
+        setSyncRequested(true);
+        try {
+            await fetch("/api/libraries/sync", { method: "POST" });
+        } catch {
+            setSyncRequested(false);
+        }
+    };
 
     // Group sections per server — library counts stay per-server, never summed.
     const byServer = new Map<string, { name: string; sections: Section[] }>();
@@ -77,8 +94,16 @@ export function LibrariesClient() {
                 ))}
 
                 {!error && !isLoading && byServer.size === 0 && (
-                    <div className="rounded-2xl glass-panel border border-white/5 p-10 text-center text-white/40">
-                        No libraries synced yet - the first sync runs shortly after startup.
+                    <div className="rounded-2xl glass-panel border border-white/5 p-10 text-center text-white/40 space-y-4">
+                        <p>No libraries synced yet.</p>
+                        <button
+                            onClick={triggerSync}
+                            disabled={syncRequested}
+                            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-60"
+                        >
+                            <RefreshCw className={syncRequested ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                            {syncRequested ? "Syncing..." : "Sync now"}
+                        </button>
                     </div>
                 )}
 

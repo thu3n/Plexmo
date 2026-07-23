@@ -11,11 +11,8 @@ import { Search, Filter, Trash2, Edit2, Calendar, ChevronLeft, ChevronRight, X, 
 import { UserMenu } from "@/components/UserMenu";
 import { HeaderNav } from "@/components/HeaderNav";
 import { SkeletonRows } from "@/components/Skeleton";
+import { fetchJsonOrThrow as fetchJson } from "@/lib/swr-fetch";
 import clsx from "clsx";
-
-
-
-const fetchJson = (url: string) => fetch(url).then((res) => res.json());
 
 // API Response type
 type HistoryApiResponse = {
@@ -85,7 +82,7 @@ function HistoryContent({ timeZone }: { timeZone: string }) {
     if (debouncedSearch) queryParams.set("search", debouncedSearch);
 
     // Fetch history from backend
-    const { data, isLoading } = useSWR<HistoryApiResponse>(
+    const { data, isLoading, error } = useSWR<HistoryApiResponse>(
         `/api/history?${queryParams.toString()}`,
         fetchJson,
         {
@@ -273,6 +270,12 @@ function HistoryContent({ timeZone }: { timeZone: string }) {
                         </div>
                     </div>
                 </div>
+
+                {error && (
+                    <div className="mb-4 rounded-2xl glass-panel border border-rose-500/20 p-6 text-center text-rose-200">
+                        {error instanceof Error ? error.message : "Failed to load history"}
+                    </div>
+                )}
 
                 <HistoryList
                     history={displayHistory}

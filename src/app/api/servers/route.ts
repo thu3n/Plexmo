@@ -5,6 +5,9 @@ import { normalizePlexUrl } from "@/lib/plex";
 import { getPlexUser } from "@/lib/auth";
 import { reattributeOwnerAlias } from "@/lib/identity";
 import { authorizeApiKeyOrSession, isOwnerLike } from "@/lib/auth-guard";
+import { canUpgradeSessionToOwner } from "@/lib/authz";
+import { startTrackedLibrarySync } from "@/lib/library/sync-job";
+import { syncServerLibraries } from "@/lib/library/library-sync";
 import { createSession, verifyToken } from "@/lib/jwt";
 import { cookies } from "next/headers";
 import { Logger } from "@/lib/logger";
@@ -84,16 +87,24 @@ export async function POST(request: Request) {
     // Real-time must not wait for a process restart: wire the WebSocket and
     // backfill the natural key/owner cache for the new (or revived) server.
     const fresh = await getServerById(server.id);
-    if (fresh) connectToServer(fresh);
+    if (fresh) {
+      connectToServer(fresh);
+      // Library inventory for the new server must not wait for the 6-hour
+      // cycle either — a fresh install would show "No libraries synced yet"
+      // until restart. Tracked so it shows up under Settings → Jobs.
+      startTrackedLibrarySync(fresh.name, () => syncServerLibraries(fresh));
+    }
     backfillServerIdentities().catch((err) => Logger.error("Post-create identity backfill failed:", err));
 
     const response = NextResponse.json({ server }, { status: 201 });
 
-    // Onboarding completion: the invitee just connected a server they
-    // provably own (their token resolved to their own account) — upgrade the
-    // 30-minute contained session to a normal 7-day owner session. A foreign
-    // token never upgrades: that is the anti-escalation backstop.
-    if (user.scope.role === "onboarding" && ownerAccountId && ownerAccountId === user.id) {
+    // First-server completion: the user just connected a server they provably
+    // own (their token resolved to their own account) — upgrade the session to
+    // a normal 7-day owner session. Applies to invite-minted `onboarding`
+    // sessions AND fresh-install `setup` sessions: without this, the setup
+    // cookie 401s on every data route as soon as the server exists, until the
+    // user logs out and back in.
+    if (canUpgradeSessionToOwner(user.scope.role, ownerAccountId, user.id)) {
       const cookieStore = await cookies();
       const rawCookie = cookieStore.get("token")?.value;
       const session = rawCookie ? await verifyToken(rawCookie) : null;
