@@ -111,6 +111,7 @@ Auto-restart after a restore relies on Docker's `restart: unless-stopped` policy
 
 - Bug reports and feature requests can be submitted via [GitHub Issues](https://github.com/thu3n/plexmo/issues)
 - Questions and discussions are welcome in [GitHub Discussions](https://github.com/thu3n/plexmo/discussions)
+- Chat with the community on [Discord](https://discord.gg/4rvmVg8Ejt)
 
 ## Contributing
 
