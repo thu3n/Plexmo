@@ -25,13 +25,30 @@ const neverCacheRedirects = {
         response.redirected || response.status !== 200 ? null : response,
 };
 
+/** Once the server stops answering "/" with the shell — logout (307 to
+ * /login) or an instance reset behind the same URL (307 to /setup) — the
+ * cached copy is a trap: redirects are never cached, so without eviction the
+ * stale logged-in shell would be resurrected on every cold open forever. */
+export const shouldEvictShell = (response: { redirected: boolean; ok: boolean }): boolean =>
+    response.redirected || !response.ok;
+
+const evictStaleShell = {
+    fetchDidSucceed: async ({ response }: { response: Response }) => {
+        if (shouldEvictShell(response)) {
+            const cache = await caches.open(PAGES_CACHE);
+            await cache.delete(ROOT_SHELL_PATH);
+        }
+        return response;
+    },
+};
+
 // Start-url "/" is a prerendered client shell (data arrives via SWR after
 // hydration), so serving the cached copy INSTANTLY and refreshing it in the
 // background is semantically safe — this is what removes the white window on
 // iOS cold opens, where nothing paints until the document arrives.
 const rootShellStrategy = new StaleWhileRevalidate({
     cacheName: PAGES_CACHE,
-    plugins: [new ExpirationPlugin({ maxEntries: PAGES_CACHE_MAX_ENTRIES }), neverCacheRedirects],
+    plugins: [new ExpirationPlugin({ maxEntries: PAGES_CACHE_MAX_ENTRIES }), neverCacheRedirects, evictStaleShell],
 });
 
 const otherPagesStrategy = new NetworkFirst({

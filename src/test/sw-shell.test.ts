@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isCacheableShellResponse } from "@/lib/sw/navigation";
+import { isCacheableShellResponse, shouldEvictShell } from "@/lib/sw/navigation";
 
 const shellResponse = (overrides: Partial<{ ok: boolean; redirected: boolean; url: string }> = {}) => ({
     ok: true,
@@ -31,6 +31,20 @@ describe("isCacheableShellResponse", () => {
 
     it("rejects non-ok responses", () => {
         expect(isCacheableShellResponse(shellResponse({ ok: false }))).toBe(false);
+    });
+});
+
+describe("shouldEvictShell", () => {
+    it("keeps the cached shell while '/' still serves it", () => {
+        expect(shouldEvictShell({ redirected: false, ok: true })).toBe(false);
+    });
+
+    it("evicts on a followed redirect (logout -> /login, instance reset -> /setup)", () => {
+        expect(shouldEvictShell({ redirected: true, ok: true })).toBe(true);
+    });
+
+    it("evicts on non-ok responses", () => {
+        expect(shouldEvictShell({ redirected: false, ok: false })).toBe(true);
     });
 });
 

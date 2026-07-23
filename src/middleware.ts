@@ -50,26 +50,42 @@ export async function middleware(request: NextRequest) {
     const setupCookie = request.cookies.get("plexmo_setup_complete");
     let isConfigured = !!setupCookie;
     let shouldSetCookie = false;
+    let staleSetupCookie = false;
 
-    if (!isConfigured) {
+    const fetchConfigured = async (): Promise<boolean | null> => {
         try {
-            const setupRes = await fetch(`${localApiUrl}/api/setup/status`, { cache: 'no-store' }); // Disable cache
+            const setupRes = await fetch(`${localApiUrl}/api/setup/status`, { cache: 'no-store' });
             if (setupRes.ok) {
                 const { configured } = await setupRes.json();
-                // console.log(`[Middleware] Setup Check: Configured=${configured}`);
-                isConfigured = configured;
-                if (configured) {
-                    shouldSetCookie = true;
-                }
-            } else {
-                // console.log(`[Middleware] Setup Check Failed: Status ${setupRes.status}`);
+                return configured === true;
             }
-        } catch (e) {
-            // console.log("[Middleware] Setup Check Exception:", e);
+        } catch {
+            // Status route unreachable — leave the current belief unchanged.
+        }
+        return null;
+    };
+
+    if (!isConfigured) {
+        const live = await fetchConfigured();
+        if (live === true) {
+            isConfigured = true;
+            shouldSetCookie = true;
+        }
+    } else if (pathname.startsWith("/setup") || pathname === "/login") {
+        // The 30-day setup cookie survives an instance RESET behind the same
+        // URL (wiped config volume, restore to a fresh box). Trusting it here
+        // would make onboarding unreachable: /setup would bounce to /login
+        // forever until the user clears site storage. These two pages are cold
+        // paths, so re-verify against the live status and heal the cookie.
+        const live = await fetchConfigured();
+        if (live === false) {
+            isConfigured = false;
+            staleSetupCookie = true;
         }
     }
 
     let response: NextResponse;
+    let invalidToken = false;
 
     // 1. Force Setup if NOT configured
     if (!isConfigured) {
@@ -93,6 +109,10 @@ export async function middleware(request: NextRequest) {
 
         if (token) {
             user = await verifyToken(token);
+            // A present-but-unverifiable token is dead weight (expired, or the
+            // instance was reset and signs with a new secret) — delete it so
+            // the browser stops resending garbage.
+            invalidToken = !user;
         }
 
         // Onboarding sessions (invite-minted) are contained to the wizard:
@@ -132,6 +152,9 @@ export async function middleware(request: NextRequest) {
             maxAge: 60 * 60 * 24 * 30 // 30 days
         });
     }
+    // Self-heal browser state left over from a previous instance at this URL.
+    if (staleSetupCookie) response.cookies.delete("plexmo_setup_complete");
+    if (invalidToken) response.cookies.delete("token");
 
     return response;
 }
