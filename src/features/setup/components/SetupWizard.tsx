@@ -69,8 +69,11 @@ export function SetupWizard({
         window.location.href = "/";
     };
 
-    // First-run alternative path: restore a full backup instead of setting up.
-    if (mode === "setup" && showRestore && !isAuthenticated && !done) {
+    // First-run alternative path: restore a full backup instead of connecting a
+    // server. Offered only once signed in — the restore route requires a
+    // session (a backup carries the instance signing key, so an anonymous
+    // upload would be a bootable backdoor).
+    if (mode === "setup" && showRestore && isAuthenticated && !done) {
         return (
             <AnimatePresence mode="wait">
                 <RestoreStep onBack={() => setShowRestore(false)} />
@@ -124,6 +127,11 @@ export function SetupWizard({
                             onLogin={pin.login}
                             t={t}
                         />
+                        {loginExtra}
+                    </div>
+                ) : (
+                    <div key="step-server" className="w-full flex flex-col items-center gap-4">
+                        <ServerConfigStep containerVariants={containerVariants} setup={setup} t={t} />
                         {mode === "setup" && (
                             <button
                                 onClick={() => setShowRestore(true)}
@@ -132,10 +140,7 @@ export function SetupWizard({
                                 or restore from a backup
                             </button>
                         )}
-                        {loginExtra}
                     </div>
-                ) : (
-                    <ServerConfigStep containerVariants={containerVariants} setup={setup} t={t} />
                 )}
             </AnimatePresence>
         </>

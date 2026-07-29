@@ -57,6 +57,11 @@ const listStmt = db.prepare<[], DbServer>(
 const listArchivedStmt = db.prepare<[], DbServer>(
   "SELECT * FROM servers WHERE archivedAt IS NOT NULL ORDER BY datetime(createdAt) ASC"
 );
+// Unfiltered on purpose — see hasCompletedSetup/listServersForOwnership.
+const existsAnyServerStmt = db.prepare<[], { one: number }>("SELECT 1 as one FROM servers LIMIT 1");
+const listAnyStmt = db.prepare<[], DbServer>(
+  "SELECT * FROM servers ORDER BY datetime(createdAt) ASC"
+);
 // Deliberately unfiltered: archived servers keep serving credentials for
 // thumbnails and history rendering.
 const getByIdStmt = db.prepare<[string], DbServer | undefined>("SELECT * FROM servers WHERE id = ?");
@@ -191,9 +196,30 @@ export const getServerToken = async (id: string): Promise<string | null> => {
   return server?.token || null;
 };
 
-/** Number of configured (non-archived) servers. Used to detect first-run/setup state. */
+/** Number of live (non-archived) servers. */
 export const getServerCount = (): number => {
   return countServers.get()?.count ?? 0;
+};
+
+/**
+ * Has this instance ever been configured? Archived rows count.
+ *
+ * deleteServer is a soft delete, so deriving this from live servers alone
+ * would drop a fully populated instance back into unauthenticated setup mode
+ * the moment the owner removes their last server — which also hands a
+ * `setup` (owner-like) session to any Plex account that logs in. Ownership
+ * survives on the archived row, so the instance stays claimed.
+ */
+export const hasCompletedSetup = (): boolean => existsAnyServerStmt.get() !== undefined;
+
+/**
+ * Every server row, archived included, for the login ownership check. An
+ * archived server's ownerAccountId is the only durable record of who owns
+ * this instance once the last live server is gone.
+ */
+export const listServersForOwnership = async (): Promise<DbServer[]> => {
+  await ensureDefaultServer();
+  return listAnyStmt.all();
 };
 
 /** Cache the server owner's plex.tv account id (normally lazily backfilled at login). */

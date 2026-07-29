@@ -17,6 +17,7 @@ import {
     type SeriesMeta,
     type MovieMeta,
 } from "@/lib/tautulli-client";
+import { resolveTautulliApiBase, tautulliApiUrl, tautulliFetch } from "@/lib/tautulli-url";
 import { findExistingImported, enrichExistingRow } from "@/lib/tautulli-enrich";
 
 export interface TautulliImportOptions {
@@ -35,7 +36,11 @@ export interface TautulliImportOptions {
  */
 export async function runTautulliImport(jobId: string, opts: TautulliImportOptions): Promise<void> {
     const { cleanUrl, apiKey, serverMapping } = opts;
-    const apiUrl = `${cleanUrl}/api/v2`;
+    const apiUrl = resolveTautulliApiBase(cleanUrl);
+    if (!apiUrl) {
+        updateJob(jobId, { status: 'failed', message: 'Invalid Tautulli URL' });
+        return;
+    }
 
     // Provenance key for this Tautulli instance. Combined with the source row
     // id in UNIQUE(serverId, importSource, importRef) it makes re-imports
@@ -49,10 +54,10 @@ export async function runTautulliImport(jobId: string, opts: TautulliImportOptio
         // 1. Verify Connection (Fast check)
         try {
             // Just check server names to ensure connectivity
-            const res = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_server_names`);
+            const res = await tautulliFetch(apiUrl, apiKey, { cmd: "get_server_names" });
             if (!res.ok) {
                 // Fallback to get_servers_info for standard
-                const res2 = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_servers_info`);
+                const res2 = await tautulliFetch(apiUrl, apiKey, { cmd: "get_servers_info" });
                 if (!res2.ok) throw new Error(`API Error ${res2.status}`);
             }
         } catch (e: any) {
@@ -124,7 +129,6 @@ export async function runTautulliImport(jobId: string, opts: TautulliImportOptio
             let keepFetchingServer = true;
             let start = 0;
             let currentBatchSize = 1000; // Start with 1000 fast mode
-            const baseServerUrl = `${apiUrl}?apikey=${apiKey}&cmd=get_history&server_id=${sourceId}`;
             let serverItemsProcessed = 0;
 
             try {
@@ -149,7 +153,13 @@ export async function runTautulliImport(jobId: string, opts: TautulliImportOptio
                         }
                     }
 
-                    const historyUrl = `${baseServerUrl}&length=${actualBatchSize}&start=${start}&grouping=0`;
+                    const historyUrl = tautulliApiUrl(apiUrl, apiKey, {
+                        cmd: "get_history",
+                        server_id: sourceId,
+                        length: actualBatchSize,
+                        start,
+                        grouping: 0,
+                    });
 
                     let histJson: any = null;
                     let fetchSuccess = false;

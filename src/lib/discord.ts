@@ -1,7 +1,8 @@
-import { getSetting, setSetting } from "./settings";
-import { PlexSession, decodePlexString } from "./plex";
+import { getSetting } from "./settings";
+import { PlexSession } from "./plex";
 import { HistoryEntry } from "./history";
 import { db } from "./db";
+import { parseOutboundUrl } from "./outbound-url";
 import type { DiscordWebhookRow, CountRow } from "./db-types";
 
 type DiscordEmbed = {
@@ -129,21 +130,37 @@ export const deleteWebhook = (id: string): void => {
     db.prepare("DELETE FROM discord_webhooks WHERE id = ?").run(id);
 };
 
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
+/**
+ * Send the payload, refusing targets that fail outbound validation. The write
+ * paths validate too; this catches rows persisted before that check existed.
+ */
+const postToWebhook = async (rawUrl: string, embed: DiscordEmbed, label: string): Promise<void> => {
+    const url = parseOutboundUrl(rawUrl);
+    if (!url) {
+        console.error(`Refusing to send Discord notification to ${label}: URL not allowed`);
+        return;
+    }
+    try {
+        await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: "Plexmo",
+                embeds: [embed],
+            }),
+            signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+        });
+    } catch (error) {
+        console.error(`Failed to send Discord notification to ${label}:`, error);
+    }
+};
+
 export const sendDiscordNotification = async (embed: DiscordEmbed, eventType: "start" | "stop" | "terminate" | "test", overrideUrl?: string) => {
     // If override URL is provided, send only to that URL
     if (overrideUrl) {
-        try {
-            await fetch(overrideUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    username: "Plexmo",
-                    embeds: [embed],
-                }),
-            });
-        } catch (error) {
-            console.error(`Failed to send Discord notification to override URL:`, error);
-        }
+        await postToWebhook(overrideUrl, embed, "override URL");
         return;
     }
 
@@ -159,20 +176,7 @@ export const sendDiscordNotification = async (embed: DiscordEmbed, eventType: "s
     if (targets.length === 0) return;
 
     // 3. Send to all targets
-    await Promise.allSettled(targets.map(async (webhook) => {
-        try {
-            await fetch(webhook.url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    username: "Plexmo",
-                    embeds: [embed],
-                }),
-            });
-        } catch (error) {
-            console.error(`Failed to send Discord notification to ${webhook.name}:`, error);
-        }
-    }));
+    await Promise.allSettled(targets.map((webhook) => postToWebhook(webhook.url, embed, webhook.name)));
 };
 
 export const sendSessionStartNotification = async (session: PlexSession) => {

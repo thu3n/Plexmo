@@ -1,7 +1,10 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyToken } from "@/lib/jwt";
+import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
+import { Logger } from "@/lib/logger";
+
+/** Segments that would let the caller steer the upstream URL off the metadata path. */
+const UNSAFE_SEGMENT = /[/\\?#]|^\.\.?$/;
 
 // Handle /library/metadata/[...path]
 // Example: http://localhost:3000/library/metadata/1064/thumb/1700000000
@@ -12,35 +15,22 @@ export async function GET(
 ) {
     const params = await props.params;
 
-    // Debug Log
-    console.log(`[ImageProxy] Request URL: ${req.url}`);
-
-    // 1. Security Check
-    const token = req.cookies.get("token")?.value;
-    if (!token) {
-        console.log("[ImageProxy] No token");
+    if (!(await authorizeApiKeyOrSession(req))) {
         return new NextResponse("Unauthorized", { status: 401 });
     }
-    const user = await verifyToken(token);
-    if (!user) {
-        console.log("[ImageProxy] Invalid token");
-        return new NextResponse("Unauthorized", { status: 401 });
-    }
-
-    // Next.js 15 compat: params is now awaited
-    console.log(`[ImageProxy] Params:`, params);
 
     const pathSegments = params.path;
     if (!pathSegments || pathSegments.length === 0) {
-        console.log("[ImageProxy] Empty path segments");
+        return new NextResponse("Invalid Path", { status: 400 });
+    }
+    if (pathSegments.some((segment) => UNSAFE_SEGMENT.test(segment))) {
         return new NextResponse("Invalid Path", { status: 400 });
     }
 
-    // 2. Extract ratingKey (first segment)
+    // Extract ratingKey (first segment)
     const ratingKey = pathSegments[0];
-    console.log(`[ImageProxy] RatingKey: ${ratingKey}`);
 
-    // 3. Find which server owns this ratingKey via media_sources (the
+    // Find which server owns this ratingKey via media_sources (the
     // per-server ratingKey -> canonical media mapping). The URL shape carries
     // no serverId, so a cross-server ratingKey collision is inherently
     // ambiguous here — any owning server serves an identical image.
@@ -64,29 +54,21 @@ export async function GET(
     `).get(ratingKey) as { baseUrl: string, token: string } | undefined;
 
     if (!resolved) {
-        console.log(`[ImageProxy] Item not found for ratingKey: ${ratingKey}`);
         return new NextResponse("Item not found or Server unknown", { status: 404 });
     }
 
-    // 4. Construct Upstream URL
-    // Plex expects: /library/metadata/1064/thumb/1700000000?X-Plex-Token=...
-    const relativePath = pathSegments.join('/');
-    // Check for double slashes or missing slashes?
-    // baseUrl usually "http://host:port". relativePath "123/thumb/456".
-    const upstreamUrl = `${resolved.baseUrl}/library/metadata/${relativePath}?X-Plex-Token=${resolved.token}`;
-    console.log(`[ImageProxy] Upstream URL: ${upstreamUrl}`);
-
     try {
+        // Build the upstream URL through the URL API so the admin token can
+        // never be absorbed into a caller-supplied query string, and never
+        // surface the resulting URL — it carries that token in the clear.
+        const upstreamUrl = new URL(`${resolved.baseUrl}/library/metadata/${pathSegments.join("/")}`);
+        upstreamUrl.searchParams.set("X-Plex-Token", resolved.token);
+
         const response = await fetch(upstreamUrl);
 
         if (!response.ok) {
-            console.log(`[ImageProxy] Upstream Error: ${response.status} ${response.statusText}`);
-            // Check if it really is the upstream returning 400
-            if (response.status === 400) {
-                const text = await response.text();
-                console.log(`[ImageProxy] Upstream Body: ${text}`);
-            }
-            return new NextResponse(`Plex Upstream Error: ${response.statusText} (${response.status}). URL: ${upstreamUrl}`, { status: response.status });
+            Logger.warn(`[ImageProxy] Upstream returned ${response.status} for ratingKey ${ratingKey}`);
+            return new NextResponse("Plex upstream error", { status: response.status });
         }
 
         const headers = new Headers();
@@ -99,7 +81,7 @@ export async function GET(
         });
 
     } catch (e) {
-        console.error("[ImageProxy] Failed:", e);
+        Logger.error("[ImageProxy] Failed:", e);
         return new NextResponse("Internal Server Error", { status: 500 });
     }
 }

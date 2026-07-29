@@ -1,4 +1,5 @@
 import { Logger } from "@/lib/logger";
+import { tautulliFetch } from "@/lib/tautulli-url";
 
 // Stateless Tautulli API v2 fetch helpers extracted from the import orchestrator.
 // Each takes the resolved `${url}/api/v2` base + apiKey and returns parsed data;
@@ -56,7 +57,7 @@ export async function fetchStreamDataBatch(
             const rowId = queue.shift();
             if (rowId === undefined) return;
             try {
-                const res = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_stream_data&row_id=${rowId}`);
+                const res = await tautulliFetch(apiUrl, apiKey, { cmd: "get_stream_data", row_id: String(rowId) });
                 if (!res.ok) continue;
                 const json = await res.json();
                 const data = json?.response?.data;
@@ -197,7 +198,7 @@ export async function resolveServerNames(apiUrl: string, apiKey: string): Promis
     const serverNames: Record<string, string> = {};
     try {
         // Try Fork First
-        const nameRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_server_names`);
+        const nameRes = await tautulliFetch(apiUrl, apiKey, { cmd: "get_server_names" });
         if (nameRes.ok) {
             const nameJson = await nameRes.json();
             if (nameJson.response?.result === 'success' && Array.isArray(nameJson.response.data)) {
@@ -208,7 +209,7 @@ export async function resolveServerNames(apiUrl: string, apiKey: string): Promis
         }
 
         // Try Standard Fallback (augment, don't overwrite if fork succeeded)
-        const infoRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_servers_info`);
+        const infoRes = await tautulliFetch(apiUrl, apiKey, { cmd: "get_servers_info" });
         if (infoRes.ok) {
             const infoJson = await infoRes.json();
             if (infoJson.response?.result === 'success') {
@@ -234,7 +235,7 @@ export async function resolveServerNames(apiUrl: string, apiKey: string): Promis
 export async function fetchActiveSessions(apiUrl: string, apiKey: string): Promise<Map<string, number>> {
     const activeSessionsMap = new Map<string, number>();
     try {
-        const actRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_activity`);
+        const actRes = await tautulliFetch(apiUrl, apiKey, { cmd: "get_activity" });
         if (actRes.ok) {
             const actJson = await actRes.json();
             if (actJson.response?.result === 'success') {
@@ -265,9 +266,13 @@ export async function fetchActiveSessions(apiUrl: string, apiKey: string): Promi
 
 /** C. Total history record count for a single source server (0 on failure). */
 export async function fetchServerCount(apiUrl: string, apiKey: string, sourceId: string): Promise<number> {
-    const baseServerUrl = `${apiUrl}?apikey=${apiKey}&cmd=get_history&server_id=${sourceId}`;
     try {
-        const initRes = await fetch(`${baseServerUrl}&length=1&start=0`);
+        const initRes = await tautulliFetch(apiUrl, apiKey, {
+            cmd: "get_history",
+            server_id: sourceId,
+            length: 1,
+            start: 0,
+        });
         const initJson = await initRes.json();
         if (initJson.response?.result === 'success') {
             return initJson.response.data.recordsFiltered || 0;
@@ -288,7 +293,7 @@ export async function fetchSeriesMeta(apiUrl: string, apiKey: string, keys: Set<
     Logger.info(`[Import] Fetching metadata for ${keys.size} new series...`);
     for (const key of keys) {
         try {
-            const metaRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_metadata&rating_key=${key}`);
+            const metaRes = await tautulliFetch(apiUrl, apiKey, { cmd: "get_metadata", rating_key: key });
             if (metaRes.ok) {
                 const metaJson = await metaRes.json();
                 const d = metaJson.response?.data;
@@ -316,7 +321,7 @@ export async function fetchMovieMeta(apiUrl: string, apiKey: string, keys: Set<s
     Logger.info(`[Import] Fetching metadata for ${keys.size} movies...`);
     for (const key of keys) {
         try {
-            const metaRes = await fetch(`${apiUrl}?apikey=${apiKey}&cmd=get_metadata&rating_key=${key}`);
+            const metaRes = await tautulliFetch(apiUrl, apiKey, { cmd: "get_metadata", rating_key: key });
             if (metaRes.ok) {
                 const metaJson = await metaRes.json();
                 const d = metaJson.response?.data;

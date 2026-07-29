@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRuleInstances, createRuleInstance } from "@/lib/rules";
+import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+    if (!(await requireOwner(req))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const instances = getRuleInstances();
         return NextResponse.json(instances);
@@ -13,6 +18,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+    if (!(await requireOwner(req))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const body = await req.json();
 

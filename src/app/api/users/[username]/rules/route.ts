@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserRules, getGlobalRules, getEnabledServersForRule } from "@/lib/rules";
 import { getUsersByUsername } from "@/lib/users";
+import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ username: string }> }) {
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const { username } = await params;
 

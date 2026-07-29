@@ -1,19 +1,33 @@
 import { NextResponse } from "next/server";
 import { createJob } from "@/lib/jobs";
+import { requireOwner } from "@/lib/auth-guard";
+import { resolveTautulliApiBase } from "@/lib/tautulli-url";
 import { Logger } from "@/lib/logger";
 import { runTautulliImport } from "@/lib/tautulli-import";
 
 export async function POST(request: Request) {
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
         const { url, apiKey, serverMapping } = body;
 
         // serverMapping is { [sourceId]: targetPlexmoId }
-        if (!url || !apiKey || !serverMapping || Object.keys(serverMapping).length === 0) {
+        if (!url || !apiKey || typeof apiKey !== "string" || !serverMapping || Object.keys(serverMapping).length === 0) {
             return NextResponse.json({ error: "Missing URL, API Key, or Server Mapping" }, { status: 400 });
         }
 
-        // Clean URL (strip trailing slash)
+        // Reject anything the importer must not fetch before a long-running,
+        // fire-and-forget job starts hitting it in a loop.
+        if (!resolveTautulliApiBase(url)) {
+            return NextResponse.json({ error: "Invalid Tautulli URL" }, { status: 400 });
+        }
+
+        // Clean URL (strip trailing slash). Kept in this exact shape because it
+        // seeds the import provenance hash — normalizing it would orphan the
+        // importRef of every previously imported row.
         const cleanUrl = url.replace(/\/$/, "");
 
         // Create Job (Associated with the FIRST target server for now, or a generic system job if we supported it)
@@ -28,8 +42,8 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, jobId: job.id });
 
-    } catch (error: any) {
+    } catch (error) {
         Logger.error("Tautulli API Import Error:", error);
-        return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

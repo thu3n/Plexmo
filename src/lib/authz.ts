@@ -50,15 +50,23 @@ export const resolveScope = (user: Pick<SessionUser, "id" | "email" | "role"> | 
 };
 
 /**
- * Instance-administration check. Allowed: owners, first-run `setup` sessions
- * (only valid while zero servers exist — enforced by the request guard) and
- * API keys. Denied: viewers — including Plex-reported `isAdmin` viewers (that
- * flag mirrors Plex server admin status, not a Plexmo management grant) — and
+ * Instance-administration check. Allowed: owners and first-run `setup`
+ * sessions (only valid while the instance has never been configured —
+ * enforced by the request guard).
+ *
+ * Denied: viewers — including Plex-reported `isAdmin` viewers (that flag
+ * mirrors Plex server admin status, not a Plexmo management grant);
  * `onboarding` sessions, whose one permitted mutation (server add) is granted
- * explicitly at the route.
+ * explicitly at the route; and `api` keys.
+ *
+ * API keys are READ-ONLY on purpose. They are a long-lived bearer credential
+ * that travels in query strings for Wrapperr/Rewrap compatibility, so a leaked
+ * key must not be able to reach /api/settings/export (every Plex token plus
+ * the JWT secret) or rotate itself. Keys stay valid on the hybrid read
+ * surfaces that call authorizeApiKeyOrSession without this check.
  */
 export const isOwnerLike = (user: { scope: AccessScope }): boolean =>
-  user.scope.role === "owner" || user.scope.role === "setup" || user.scope.role === "api";
+  user.scope.role === "owner" || user.scope.role === "setup";
 
 /**
  * First-server completion: may this session be upgraded to a normal owner
@@ -67,8 +75,8 @@ export const isOwnerLike = (user: { scope: AccessScope }): boolean =>
  * Covers both fresh-install `setup` sessions and invite-minted `onboarding`
  * sessions — without the upgrade, a `setup` cookie turns into a 401 on every
  * data route the moment the first server exists (the request guard kills
- * setup tokens once getServerCount() > 0). A foreign token never upgrades:
- * that is the anti-escalation backstop.
+ * setup tokens once hasCompletedSetup() is true). A foreign token never
+ * upgrades: that is the anti-escalation backstop.
  */
 export const canUpgradeSessionToOwner = (
   scopeRole: AccessScope["role"],

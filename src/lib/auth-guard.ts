@@ -2,9 +2,9 @@ import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/jwt";
 import { validateApiKey } from "@/lib/api-auth";
 import { getIdentity, isAdminAnywhere } from "@/lib/identity";
-import { getServerCount } from "@/lib/servers";
+import { hasCompletedSetup } from "@/lib/servers";
 import { resolveScope, isOwnerLike, type AccessScope } from "@/lib/authz";
-import { isOnboardingAllowedApi } from "@/lib/onboarding-allowlist";
+import { isWizardAllowedApi } from "@/lib/wizard-allowlist";
 
 export type AuthorizedUser = {
     id: string;
@@ -28,9 +28,10 @@ export async function authorizeApiKeyOrSession(request: Request): Promise<Author
     if (token) {
         const sessionPayload = await verifyToken(token);
         if (sessionPayload) {
-            // Setup-mode tokens are only valid while NO server is configured.
-            // The moment the first server exists, they die here.
-            if (sessionPayload.role === "setup" && getServerCount() > 0) {
+            // Setup-mode tokens are only valid while the instance has never
+            // been configured. The moment a server exists — archived ones
+            // included — they die here.
+            if (sessionPayload.role === "setup" && hasCompletedSetup()) {
                 return null;
             }
 
@@ -39,7 +40,7 @@ export async function authorizeApiKeyOrSession(request: Request): Promise<Author
             // check in middleware.
             if (sessionPayload.role === "onboarding") {
                 const { pathname } = new URL(request.url);
-                if (!isOnboardingAllowedApi(pathname, request.method)) {
+                if (!isWizardAllowedApi(pathname, request.method)) {
                     return null;
                 }
             }
@@ -61,13 +62,15 @@ export async function authorizeApiKeyOrSession(request: Request): Promise<Author
         }
     }
 
-    // 2. Check API Key
+    // 2. Check API Key. Unscoped by design (the export feeds Wrapperr/Rewrap),
+    // but read-only: `isOwnerLike` rejects the `api` role, so requireOwner
+    // routes stay closed to keys.
     if (validateApiKey(request)) {
         return {
             id: "apikey",
             username: "API Key",
             email: "apikey@system",
-            role: "admin",
+            role: "api",
             scope: { role: "api", serverIds: "all" },
         };
     }

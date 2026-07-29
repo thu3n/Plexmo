@@ -1,25 +1,32 @@
 import { NextResponse } from "next/server";
 import { getSetting } from "@/lib/settings";
+import { requireOwner } from "@/lib/auth-guard";
+import { parseOutboundUrl } from "@/lib/outbound-url";
 import { Logger } from "@/lib/logger";
 
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
 export async function POST(request: Request) {
+    // Posts to a caller-supplied URL — owner-only, or it is an open relay.
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const body = await request.json().catch(() => ({}));
         const { targetUrl } = body;
 
-        let webhookUrl: string | undefined = targetUrl;
+        // The UI always sends targetUrl; the stored setting is the legacy
+        // single-webhook fallback.
+        const candidate = targetUrl || getSetting("discordWebhookUrl");
 
-        // If no target URL provided, this endpoint isn't really useful in the new multi-webhook system 
-        // without specifying which one. 
-        // But for backward compat/simple test, we can check if there's any global setting OR just error.
-        // Actually, the new UI always sends targetUrl.
-        if (!webhookUrl) {
-            const settingUrl = getSetting("discordWebhookUrl");
-            if (settingUrl) webhookUrl = settingUrl;
+        if (!candidate) {
+            return NextResponse.json({ error: "No Discord Webhook URL provided or configured" }, { status: 400 });
         }
 
+        const webhookUrl = parseOutboundUrl(candidate);
         if (!webhookUrl) {
-            return NextResponse.json({ error: "No Discord Webhook URL provided or configured" }, { status: 400 });
+            return NextResponse.json({ error: "Invalid webhook URL" }, { status: 400 });
         }
 
         const payload = {
@@ -40,16 +47,22 @@ export async function POST(request: Request) {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
         });
 
         if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`Discord API returned ${response.status}: ${text}`);
+            // Only the status code travels back. Reflecting the body would turn
+            // this into a readable SSRF against anything the container can reach.
+            Logger.warn(`Test notification rejected upstream: ${response.status}`);
+            return NextResponse.json(
+                { error: `Webhook endpoint returned ${response.status}` },
+                { status: 502 },
+            );
         }
 
         return NextResponse.json({ success: true });
-    } catch (error: any) {
+    } catch (error) {
         Logger.error("Test notification failed:", error);
-        return NextResponse.json({ error: error.message || "Failed to send test notification" }, { status: 500 });
+        return NextResponse.json({ error: "Failed to send test notification" }, { status: 500 });
     }
 }

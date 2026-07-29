@@ -1,25 +1,29 @@
+import { createHash, timingSafeEqual } from "crypto";
 import { getSetting } from "./settings";
 
+/**
+ * Constant-time comparison over fixed-width digests, so neither the key
+ * contents nor its length leaks through timing. Comparing the raw strings
+ * would short-circuit on the first differing byte.
+ */
+const digestsMatch = (a: string, b: string): boolean =>
+    timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
+
 export const validateApiKey = (request: Request): boolean => {
-    const { searchParams } = new URL(request.url);
-    const queryKey = searchParams.get("apiKey");
     const headerKey = request.headers.get("x-api-key");
     const authorization = request.headers.get("authorization");
+    const bearerKey = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null;
 
-    const providedKey = queryKey || headerKey || (authorization?.startsWith("Bearer ") ? authorization.split(" ")[1] : null);
+    // Headers take priority: the query form is legacy Wrapperr/Rewrap
+    // compatibility and lands verbatim in reverse-proxy access logs.
+    const { searchParams } = new URL(request.url);
+    const providedKey = headerKey || bearerKey || searchParams.get("apiKey");
 
     if (!providedKey) return false;
 
+    // No key generated yet means the API surface is simply closed.
     const storedKey = getSetting("API_KEY");
-
-    // If no key is configured in the system, deny access by default to be safe, 
-    // or allow? The user specifically asked to "enable" API key. 
-    // If feature isn't used, we shouldn't block public access if that was the old behavior?
-    // Wait, the request is "Kan vi nu göra så applikationen har api nyckel".
-    // This implies locking it down. So if NO key is set, maybe we should block or allow?
-    // Usually if a user hasn't generated a key yet, they can't use the API. 
-    // So if storedKey is missing, validation fails.
     if (!storedKey) return false;
 
-    return providedKey === storedKey;
+    return digestsMatch(providedKey, storedKey);
 };

@@ -29,11 +29,12 @@ export function GeneralConfigForm() {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await fetch("/api/settings", {
+            const response = await fetch("/api/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ key: "APP_NAME", value: formAppName }),
             });
+            if (!response.ok) throw new Error("Failed to save");
             await mutateSettings();
             alert(t("settings.saveSuccess"));
             window.location.reload();

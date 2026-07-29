@@ -7,13 +7,11 @@ services:
     environment:
       - TZ=Europe/Stockholm
       - PORT=3000
-      # [OPTIONAL] Sets the default start folder for the file browser
-      # - TAUTULLI_PATH=/mnt/tautulli
     ports:
       - "3000:3000"
     volumes:
       - ./config:/app/config
-      # [REQUIRED for Import] Mount your Tautulli folder so the container can see it.
-      # Format: /path/on/host:/path/in/container:ro
-      # - /path/to/tautulli:/mnt/tautulli:ro
+      # Tautulli DB import: copy a checkpointed snapshot of tautulli.db into
+      # ./config/import/Tautulli/ on the host. Imports only read from inside
+      # the config volume, so no extra mount is needed.
     restart: unless-stopped

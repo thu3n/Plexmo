@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJob } from "@/lib/jobs";
+import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const { id } = await params;
         if (!id) {

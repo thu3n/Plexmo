@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/settings";
+import { requireOwner } from "@/lib/auth-guard";
 
-export async function GET() {
+export async function GET(request: Request) {
+    // The webhook URL is a credential — anyone holding it can post as Plexmo.
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const discordWebhookUrl = getSetting("discordWebhookUrl", "");
         const discordEnabled = getSetting("discordEnabled", "true") === "true";
@@ -22,6 +28,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
         const {

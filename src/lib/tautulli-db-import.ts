@@ -35,6 +35,9 @@ export type TautulliDbInfo = {
 
 const REQUIRED_TABLES = ["session_history", "session_history_media_info", "session_history_metadata"];
 
+/** Marks the shape check as ours, so the route can surface it while hiding raw SQLite errors. */
+export const NOT_TAUTULLI_PREFIX = "Not a Tautulli database:";
+
 const openSource = (path: string): Database.Database =>
     new Database(path, { readonly: true, fileMustExist: true });
 
@@ -47,7 +50,7 @@ export const inspectTautulliDb = (path: string): TautulliDbInfo => {
     try {
         for (const table of REQUIRED_TABLES) {
             if (!src.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(table)) {
-                throw new Error(`Not a Tautulli database: missing table ${table}`);
+                throw new Error(`${NOT_TAUTULLI_PREFIX} missing table ${table}`);
             }
         }
 

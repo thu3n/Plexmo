@@ -7,8 +7,9 @@ import { useBackupRestore } from "@/features/backup/hooks/useBackupRestore";
 
 /**
  * First-run alternative path: restore a Plexmo backup zip onto a fresh
- * instance instead of setting up from scratch. Sessionless upload is allowed
- * by the restore route while zero servers exist.
+ * instance instead of connecting a server. Reached after Plex sign-in — the
+ * restore route requires a session in every instance state, so the `setup`
+ * role minted by the wizard's OAuth step is what authorizes the upload.
  */
 export function RestoreStep({ onBack }: { onBack: () => void }) {
     const { phase, error, uploadRestore, reset } = useBackupRestore();

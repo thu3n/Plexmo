@@ -3,9 +3,15 @@ import { NextResponse } from "next/server";
 import { terminateSession, getDashboardSnapshot } from "@/lib/plex";
 import { listInternalServers, DbServer } from "@/lib/servers";
 import { sendSessionTerminatedNotification } from "@/lib/discord";
+import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
+    // Killing someone else's stream is an administrative action.
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
         const { sessionId, serverId, reason } = body;

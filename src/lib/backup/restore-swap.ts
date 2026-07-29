@@ -49,9 +49,12 @@ export function applyPendingRestore(configDir: string | null, dbPath: string): b
         swapped = true;
     }
 
+    // Only install the signing key alongside the database it belongs to. On its
+    // own it would replace the instance secret while leaving the data intact —
+    // a bundle carrying just a secret must not be able to take over sessions.
     // Copy (not rename) so a crash between here and cleanup can re-run this.
     const stagedSecret = path.join(pendingDir, STAGED_SECRET_NAME);
-    if (fs.existsSync(stagedSecret)) {
+    if (swapped && fs.existsSync(stagedSecret)) {
         const secretPath = path.join(configDir, SECRET_FILE);
         fs.copyFileSync(stagedSecret, secretPath);
         try {

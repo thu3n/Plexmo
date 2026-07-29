@@ -1,39 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifyToken } from "@/lib/jwt";
-import { isOnboardingAllowedApi } from "@/lib/onboarding-allowlist";
+import { isWizardAllowedApi } from "@/lib/wizard-allowlist";
+import { isPublicPath, isStaticAssetPath } from "@/lib/middleware-paths";
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
-    // Define public paths that don't require authentication
-    // Note: Some API paths here (statistics, history) are "public" to the middleware (to allow API Keys)
-    // but are strictly secured inside their route handlers.
-    const publicPaths = [
-        "/login",
-        "/api/auth/plex",
-        "/api/auth/logout",
-        "/api/auth/me",     // Returns clean 401 JSON without a session — SessionGuard
-                            // needs that instead of a 307-to-/login HTML page, since the
-                            // SW can serve the cached "/" shell to a logged-out client.
-        "/setup",
-        "/api/setup/status",
-        "/invite",            // Invite links (token validated by the route)
-        "/api/invites/validate",
-        "/api/history",     // Hybrid Auth (Session or API Key)
-
-        "/api/stats",       // Hybrid Auth
-    ];
-
-    // Check if the current path is public
-    const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
-
-    // Also exclude static files and Next.js internals
-    const isStaticAsset = pathname.startsWith("/_next") ||
-        pathname.includes(".") || // files with extensions (images, etc) usually public
-        pathname === "/favicon.ico";
-
-    if (isStaticAsset) {
+    if (isStaticAssetPath(pathname)) {
         return NextResponse.next();
     }
 
@@ -89,8 +63,15 @@ export async function middleware(request: NextRequest) {
 
     // 1. Force Setup if NOT configured
     if (!isConfigured) {
-        // Allowed paths during setup: /setup, /api/*
-        if (pathname.startsWith("/setup") || pathname.startsWith("/api/")) {
+        // A never-configured instance has no credentials to check against, so
+        // the wizard's own API surface is open — but only that surface. Waving
+        // through all of /api/* would expose every unguarded route to anyone
+        // who can reach the container.
+        if (pathname.startsWith("/api/")) {
+            response = isWizardAllowedApi(pathname, request.method)
+                ? NextResponse.next()
+                : NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        } else if (pathname.startsWith("/setup")) {
             response = NextResponse.next();
         } else {
             // Redirect everything else to /setup
@@ -121,7 +102,7 @@ export async function middleware(request: NextRequest) {
         // page requests resume the wizard instead of reaching the app.
         if (user?.role === "onboarding") {
             if (pathname.startsWith("/api/")) {
-                response = isOnboardingAllowedApi(pathname, request.method)
+                response = isWizardAllowedApi(pathname, request.method)
                     ? NextResponse.next()
                     : NextResponse.json({ error: "Forbidden" }, { status: 403 });
             } else if (pathname.startsWith("/invite")) {
@@ -131,7 +112,7 @@ export async function middleware(request: NextRequest) {
             }
         }
         // If user is NOT logged in and tries to access a protected route
-        else if (!user && !isPublicPath) {
+        else if (!user && !isPublicPath(pathname)) {
             const loginUrl = new URL("/login", request.url);
             response = NextResponse.redirect(loginUrl);
         }

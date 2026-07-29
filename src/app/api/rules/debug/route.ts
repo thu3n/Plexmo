@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRuleInstances, getRuleAssignmentIds, getEnabledServersForRule } from "@/lib/rules";
 import { getUserById } from "@/lib/users";
+import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
+    if (!(await requireOwner(req))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const { userId } = await req.json();
 

@@ -1,4 +1,4 @@
-import { listInternalServers } from "./servers";
+import { listServersForOwnership } from "./servers";
 import { db } from "./db";
 import { reattributeOwnerAlias } from "./identity";
 import { XMLParser } from "fast-xml-parser";
@@ -48,13 +48,18 @@ export type AccessCheck = {
 
 /**
  * Verifies if the user is an owner or in the allowed users list, and with
- * which role. `setup` is only issued while no servers are configured — such
- * tokens are rejected by the request guard once a server exists.
+ * which role. `setup` is only issued while the instance has never been
+ * configured — such tokens are rejected by the request guard once a server
+ * exists.
+ *
+ * Archived servers count here, both for the setup check and for ownership:
+ * removing the last server must not re-open the instance for any Plex account
+ * to claim, and must not lock the real owner out of their own data.
  */
 export async function verifyAccess(userToken: string): Promise<AccessCheck> {
-    const servers = await listInternalServers();
+    const servers = await listServersForOwnership();
 
-    // 1. If no servers, everyone is allowed (setup mode/fresh start)
+    // 1. Never configured — fresh install, everyone is allowed in to set up.
     if (servers.length === 0) {
         return { allowed: true, role: "setup" };
     }

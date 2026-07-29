@@ -17,7 +17,7 @@ const DEFAULTS = {
   finishedJobsDays: 30,
 } as const;
 
-const SETTING_KEYS = {
+export const SETTING_KEYS = {
   concurrentSnapshotsDays: "retention_concurrent_snapshots_days",
   ruleEventsDays: "retention_rule_events_days",
   finishedJobsDays: "retention_finished_jobs_days",

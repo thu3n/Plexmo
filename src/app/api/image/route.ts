@@ -8,10 +8,27 @@ import {
 } from "@/lib/image-cache";
 import { Logger } from "@/lib/logger";
 import { isAllowedExternalImageUrl } from "@/lib/avatar";
+import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
 
 const IMAGE_FETCH_TIMEOUT_MS = 10_000;
 const MAX_IMAGE_DIM = 1200;
 const IMAGE_CACHE_CONTROL = "public, max-age=86400";
+
+/**
+ * Relative paths become a PMS request carrying the server's admin token, so
+ * only the image-shaped paths Plex actually emits are accepted. A bare
+ * `/library/` prefix would not be enough — `/library/sections/1/all` is the
+ * full library listing. Everything else PMS exposes (`/accounts`,
+ * `/status/sessions`, `/:/prefs`, `/myplex/account`) is off the list entirely.
+ *
+ * Shapes in use: `/library/metadata/<ratingKey>/thumb/<ts>` from
+ * library_items.thumb and live sessions, and the `/thumb`-suffixed form
+ * synthesized in src/lib/stats/media-thumbs.ts.
+ */
+const PMS_IMAGE_PATH = /^\/library\/(metadata|sections)\/[^/]+\/(thumb|art|banner|theme|composite)(\/[^/]+)?$/;
+
+const isAllowedPmsPath = (path: string): boolean =>
+    PMS_IMAGE_PATH.test(path) && !path.includes("..");
 
 const parseDim = (raw: string | null): number | undefined => {
     const value = Number(raw);
@@ -45,6 +62,10 @@ const imageResponse = (entry: { bytes: Buffer; contentType: string; etag: string
 };
 
 export async function GET(request: NextRequest) {
+    if (!(await authorizeApiKeyOrSession(request))) {
+        return new NextResponse("Unauthorized", { status: 401 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const path = searchParams.get("path");
     const serverId = searchParams.get("serverId");
@@ -78,15 +99,30 @@ export async function GET(request: NextRequest) {
             }
             targetUrl = path;
         } else {
+            if (!isAllowedPmsPath(path)) {
+                return new NextResponse("Path not allowed", { status: 400 });
+            }
             const server = serverId ? await getServerById(serverId) : null;
             if (!server) {
                 return new NextResponse("Server not found", { status: 404 });
             }
-            targetUrl = `${server.baseUrl}${path}?X-Plex-Token=${server.token}`;
+            // Built through the URL API so the token lands in its own parameter
+            // rather than being absorbed into a crafted path.
+            const target = new URL(`${server.baseUrl}${path}`);
+            target.searchParams.set("X-Plex-Token", server.token);
+            targetUrl = target.toString();
+
             if (w && h) {
                 // PMS photo transcoder: a poster thumb weighs kilobytes instead
                 // of the full-resolution original.
-                transcodeUrl = `${server.baseUrl}/photo/:/transcode?width=${w}&height=${h}&minSize=1&upscale=1&url=${encodeURIComponent(path)}&X-Plex-Token=${server.token}`;
+                const transcode = new URL(`${server.baseUrl}/photo/:/transcode`);
+                transcode.searchParams.set("width", String(w));
+                transcode.searchParams.set("height", String(h));
+                transcode.searchParams.set("minSize", "1");
+                transcode.searchParams.set("upscale", "1");
+                transcode.searchParams.set("url", path);
+                transcode.searchParams.set("X-Plex-Token", server.token);
+                transcodeUrl = transcode.toString();
             }
         }
 

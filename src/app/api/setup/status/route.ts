@@ -1,12 +1,13 @@
 
 import { NextResponse } from "next/server";
-import { getServerCount } from "@/lib/servers";
+import { hasCompletedSetup } from "@/lib/servers";
 import { Logger } from "@/lib/logger";
 
 export async function GET() {
     try {
-        // We are configured once at least one server exists.
-        const isConfigured = getServerCount() > 0;
+        // Configured once a server has ever been added. Archived servers still
+        // count — removing the last one must not re-open unauthenticated setup.
+        const isConfigured = hasCompletedSetup();
 
         return NextResponse.json({ configured: isConfigured });
     } catch (error) {

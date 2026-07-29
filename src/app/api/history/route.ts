@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getHistory, deleteHistory, deleteAllHistory } from "@/lib/history";
-import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
+import { authorizeApiKeyOrSession, isOwnerLike } from "@/lib/auth-guard";
 import { scopedServerIds } from "@/lib/authz";
 import { Logger } from "@/lib/logger";
 
@@ -39,6 +39,13 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+    // Destructive and unscoped — viewers never get to wipe history, even
+    // though they may read it.
+    const user = await authorizeApiKeyOrSession(request);
+    if (!user || !isOwnerLike(user)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
         const { ids, all } = body;

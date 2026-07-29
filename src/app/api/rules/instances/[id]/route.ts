@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRuleInstance, updateRuleInstance, deleteRuleInstance } from "@/lib/rules";
+import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
 
 // We need to define params type for dynamic route
@@ -10,6 +11,10 @@ interface Props {
 }
 
 export async function GET(req: NextRequest, props: Props) {
+    if (!(await requireOwner(req))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const params = await props.params;
     try {
         const instance = getRuleInstance(params.id);
@@ -24,6 +29,10 @@ export async function GET(req: NextRequest, props: Props) {
 }
 
 export async function PUT(req: NextRequest, props: Props) {
+    if (!(await requireOwner(req))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const params = await props.params;
     try {
         const instance = getRuleInstance(params.id);
@@ -48,6 +57,10 @@ export async function PUT(req: NextRequest, props: Props) {
 }
 
 export async function DELETE(req: NextRequest, props: Props) {
+    if (!(await requireOwner(req))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const params = await props.params;
     try {
         deleteRuleInstance(params.id);

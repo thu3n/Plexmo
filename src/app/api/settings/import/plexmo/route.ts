@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import path from "path";
-import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/jwt";
-import { isOwnerLike, resolveScope } from "@/lib/authz";
-import { getServerCount } from "@/lib/servers";
+import { requireOwner } from "@/lib/auth-guard";
 import { resolveConfigDir, resolveDbPath } from "@/lib/config-dir";
 import { validateAndStage } from "@/lib/backup/restore-validate";
 import { Logger } from "@/lib/logger";
@@ -16,10 +13,15 @@ const EXIT_DELAY_MS = 750;
 /**
  * Restore upload. SECURITY: the middleware matcher EXEMPTS this exact path
  * (to bypass the body-size limit), so no upstream auth ever runs — this
- * handler must fully self-guard:
- * - Configured instance (servers exist): owner session required.
- * - Fresh instance (zero servers): sessionless upload allowed — identical
- *   trust model to setup mode, where anyone completing setup owns the box.
+ * handler must fully self-guard.
+ *
+ * A session is required in every instance state. On a configured instance that
+ * means an owner; on a fresh one a `setup` session (minted by Plex OAuth in
+ * the wizard) also passes, since whoever claims a never-configured box owns
+ * it. What this rules out is the anonymous upload: a backup zip may carry a
+ * `jwt-secret` entry that becomes the instance signing key, so accepting one
+ * without any credential handed an attacker a bootable backdoor on any
+ * internet-reachable fresh install.
  *
  * On success the staged restore is committed and the process exits after the
  * response flushes; Docker `restart: unless-stopped` brings it back and the
@@ -27,13 +29,8 @@ const EXIT_DELAY_MS = 750;
  * does NOT resurrect itself — the UI tells the user to restart manually.
  */
 export async function POST(request: Request) {
-    if (getServerCount() > 0) {
-        const cookieStore = await cookies();
-        const token = cookieStore.get("token")?.value;
-        const session = token ? await verifyToken(token) : null;
-        if (!session || !isOwnerLike({ scope: resolveScope(session) })) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const contentLength = Number(request.headers.get("content-length") || 0);

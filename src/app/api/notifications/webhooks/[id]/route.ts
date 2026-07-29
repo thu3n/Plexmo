@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { updateWebhook, deleteWebhook } from "@/lib/discord";
+import { requireOwner } from "@/lib/auth-guard";
+import { isAllowedOutboundUrl } from "@/lib/outbound-url";
 import { Logger } from "@/lib/logger";
 
 interface Props {
@@ -9,6 +11,10 @@ interface Props {
 }
 
 export async function PUT(request: Request, props: Props) {
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const params = await props.params;
     try {
         const { id } = params;
@@ -17,6 +23,9 @@ export async function PUT(request: Request, props: Props) {
 
         if (!name || !url || !Array.isArray(events)) {
             return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+        }
+        if (!isAllowedOutboundUrl(url)) {
+            return NextResponse.json({ error: "Invalid webhook URL" }, { status: 400 });
         }
 
         updateWebhook(id, { name, url, events, enabled });
@@ -29,6 +38,10 @@ export async function PUT(request: Request, props: Props) {
 }
 
 export async function DELETE(request: Request, props: Props) {
+    if (!(await requireOwner(request))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const params = await props.params;
     try {
         const { id } = params;
