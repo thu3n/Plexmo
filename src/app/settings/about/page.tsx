@@ -45,7 +45,9 @@ export default function AboutPage() {
                 title="About Plexmo"
                 description="Application version and project information"
             >
-                <div className="grid gap-6">
+                {/* Pairs up only past 1800px — the Version card nests its own
+                    two-column grid, which needs the room. */}
+                <div className="grid gap-6 min-[1800px]:grid-cols-2 min-[1800px]:items-start">
                     {/* Version Card */}
                     <SettingsCard>
                         <div className="space-y-6">

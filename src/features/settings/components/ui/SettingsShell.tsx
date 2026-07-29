@@ -8,12 +8,17 @@ export function SettingsSection({
     title,
     description,
     children,
-    className
+    className,
+    // Vertical stack by default. Pages that lay their content out as a grid pass
+    // their own classes here — `space-y-*` emits margins that stack on top of
+    // `gap`, so it has to be replaced rather than extended.
+    contentClassName = "space-y-4 md:space-y-6"
 }: {
     title?: string;
     description?: string;
     children: React.ReactNode;
     className?: string;
+    contentClassName?: string;
 }) {
     const [isExpanded, setIsExpanded] = React.useState(false);
     const shouldTruncate = description && description.length > 150;
@@ -57,7 +62,7 @@ export function SettingsSection({
                     )}
                 </div>
             )}
-            <div className="space-y-4 md:space-y-6">
+            <div className={contentClassName}>
                 {children}
             </div>
         </section>

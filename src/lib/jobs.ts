@@ -3,6 +3,11 @@ import type { JobRow } from "./db-types";
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
+export const INTERRUPTED_JOB_MESSAGE = 'Interrupted by a restart';
+
+/** A job untouched for this long at boot cannot belong to a live run. */
+const INTERRUPTED_JOB_GRACE_MS = 60_000;
+
 /** Map a raw jobs row to the domain Job (null -> undefined, narrow status). */
 const toJob = (row: JobRow): Job => ({
     id: row.id,
@@ -79,6 +84,23 @@ export const updateJob = (id: string, updates: Partial<Omit<Job, 'id' | 'created
         targetId: updates.targetId === undefined ? undefined : (updates.targetId ?? null),
         message: updates.message === undefined ? undefined : (updates.message ?? null)
     });
+};
+
+/**
+ * Jobs left mid-flight by a crash, OOM or redeploy. Nothing owns them once the
+ * process is gone, but nothing used to clear them either — retention only prunes
+ * terminal rows — so they spun forever in Settings → Jobs. Call once at startup.
+ *
+ * `graceMs` protects a sibling process that booted moments ago: only rows that
+ * have been untouched for longer than the grace window are reclaimed.
+ */
+export const reclaimInterruptedJobs = (graceMs = INTERRUPTED_JOB_GRACE_MS): number => {
+    const cutoff = new Date(Date.now() - graceMs).toISOString();
+    return db.prepare(`
+        UPDATE jobs
+        SET status = 'failed', message = ?, updatedAt = ?
+        WHERE status IN ('pending', 'running') AND updatedAt < ?
+    `).run(INTERRUPTED_JOB_MESSAGE, new Date().toISOString(), cutoff).changes;
 };
 
 export const getJobs = (): Job[] => {

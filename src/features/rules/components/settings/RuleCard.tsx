@@ -166,19 +166,13 @@ export default function RuleCard({ rule, onEdit, onDelete, onToggle }: RuleCardP
             {/* Footer */}
             <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between gap-4">
 
-                {/* Status Dot */}
-                <div className="flex items-center gap-2.5">
-                    <div className={clsx(
-                        "w-2 h-2 rounded-full shadow-[0_0_10px] transition-all duration-300",
-                        rule.enabled ? clsx("bg-emerald-500 shadow-emerald-500/50") : "bg-white/20 shadow-none"
-                    )} />
-                    <span className={clsx(
-                        "text-xs font-bold uppercase tracking-wider transition-colors duration-300",
-                        rule.enabled ? "text-emerald-400" : "text-white/30"
-                    )}>
-                        {rule.enabled ? "Active" : "Disabled"}
-                    </span>
-                </div>
+                {/* Status */}
+                <span className={clsx(
+                    "text-xs font-bold uppercase tracking-wider transition-colors duration-300",
+                    rule.enabled ? "text-emerald-500" : "text-white/30"
+                )}>
+                    {rule.enabled ? "Active" : "Disabled"}
+                </span>
 
                 {/* Metadata Pills */}
                 <div className="flex items-center gap-2">

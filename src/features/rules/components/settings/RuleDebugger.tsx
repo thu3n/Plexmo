@@ -71,7 +71,9 @@ export default function RuleDebugger() {
     const effectiveLimit = limits.length > 0 ? Math.min(...limits) : "Unlimited";
 
     return (
-        <div className="space-y-6">
+        // Rows here are `justify-between` label/value pairs; capped so they do not
+        // spread across the full settings width.
+        <div className="space-y-6 2xl:max-w-6xl">
             {/* Search Section */}
             <div className="bg-slate-900 border border-white/10 p-6 rounded-2xl shadow-xl">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">

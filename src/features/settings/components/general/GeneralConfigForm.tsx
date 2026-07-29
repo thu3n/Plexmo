@@ -46,7 +46,7 @@ export function GeneralConfigForm() {
     return (
         <SettingsCard>
             <form onSubmit={handleSave} className="flex flex-col md:flex-row gap-6 md:items-end justify-between">
-                <div className="space-y-3 flex-1">
+                <div className="space-y-3 flex-1 min-w-0 2xl:max-w-2xl">
                     <label className="block text-sm font-bold text-white mb-2 ml-1">
                         {t("settings.applicationName")}
                     </label>

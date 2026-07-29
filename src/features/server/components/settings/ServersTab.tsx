@@ -48,13 +48,13 @@ export function ServersTab() {
                 description="Connect and manage your Plex Media Servers."
             >
                 {isLoading ? (
-                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
                         {[1, 2, 3].map((i) => (
                             <div key={i} className="h-48 animate-pulse rounded-3xl bg-white/5 border border-white/5" />
                         ))}
                     </div>
                 ) : (
-                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
                         {data?.servers.map((server) => (
                             <SettingsCard key={server.id} className="group relative flex flex-col justify-between min-h-[200px]">
                                 <div>
@@ -75,8 +75,7 @@ export function ServersTab() {
                                     <h3 className="text-xl font-bold text-white mb-1">{server.name}</h3>
                                     <p className="text-xs text-white/40 truncate font-mono">{server.baseUrl}</p>
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                                <div className="mt-4 pt-4 border-t border-white/5 flex items-center">
                                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">Connected</span>
                                 </div>
                             </SettingsCard>

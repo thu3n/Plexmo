@@ -15,8 +15,11 @@ export default function GeneralSettingsPage() {
                 title={t("settings.general")}
                 description="Manage global application settings and preferences."
             >
-                <div className="grid gap-6">
-                    <GeneralConfigForm />
+                <div className="grid gap-6 2xl:grid-cols-2 2xl:items-start">
+                    {/* The config form carries the save bar, so it keeps the full row. */}
+                    <div className="2xl:col-span-2">
+                        <GeneralConfigForm />
+                    </div>
                     <DesktopNavCard />
                     <ApiKeyManager />
                 </div>

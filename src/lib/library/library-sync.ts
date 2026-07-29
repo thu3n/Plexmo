@@ -171,9 +171,16 @@ export const syncServerLibraries = async (server: PlexServerConfig & { id: strin
   return total;
 };
 
-/** Sync all non-archived servers. Failures are per-server, never fatal. */
-export const syncAllLibraries = async () => {
+/**
+ * Sync all non-archived servers. Failures are per-server, never fatal.
+ * `onProgress` fires as each server finishes — the tracked-job wrapper uses it
+ * as both a progress signal and a liveness heartbeat.
+ */
+export const syncAllLibraries = async (
+  onProgress?: (done: number, total: number, message: string) => void
+) => {
   const servers = await listInternalServers();
+  let done = 0;
   const results = await Promise.allSettled(
     servers.map((server) =>
       syncServerLibraries({
@@ -181,6 +188,9 @@ export const syncAllLibraries = async () => {
         name: server.name,
         baseUrl: server.baseUrl,
         token: server.token,
+      }).finally(() => {
+        done += 1;
+        onProgress?.(done, servers.length, `Synced ${done}/${servers.length} servers`);
       })
     )
   );

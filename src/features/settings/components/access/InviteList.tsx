@@ -53,11 +53,11 @@ export function InviteList() {
                 </button>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-4 2xl:grid-cols-2">
                 {isLoading ? (
                     [1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-white/5" />)
                 ) : !data || data.invites.length === 0 ? (
-                    <div className="p-8 text-center text-white/50 border border-dashed border-white/10 rounded-3xl">
+                    <div className="p-8 text-center text-white/50 border border-dashed border-white/10 rounded-3xl 2xl:col-span-2">
                         No invite links yet. Create one to onboard a friend without email whitelisting.
                     </div>
                 ) : (

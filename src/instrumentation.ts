@@ -13,6 +13,12 @@ export async function register() {
         // Prevent multiple intervals in dev mode with global variable
         const globalAny: any = global;
         if (!globalAny.__plexmo_cron_interval) {
+            // 0. Reclaim jobs that a crash or redeploy left mid-flight. Must run
+            // before anything creates a new job row, or it would fail its own.
+            const { reclaimInterruptedJobs } = await import('@/lib/jobs');
+            const reclaimed = reclaimInterruptedJobs();
+            if (reclaimed > 0) console.log(`[Jobs] Reclaimed ${reclaimed} job(s) interrupted by a restart.`);
+
             // 1. Initial Sync
             runCronJob().catch(console.error);
 

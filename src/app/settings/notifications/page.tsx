@@ -54,13 +54,13 @@ export default function NotificationsSettingsPage() {
                 description="Configure how you want to be notified about events."
             >
                 {isLoading ? (
-                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
                         {[1, 2].map((i) => (
                             <div key={i} className="h-48 animate-pulse rounded-3xl bg-white/5 border border-white/5" />
                         ))}
                     </div>
                 ) : (
-                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
                         {data?.webhooks.map((webhook) => (
                             <WebhookCard
                                 key={webhook.id}
@@ -122,12 +122,9 @@ function WebhookCard({ webhook, onEdit, onDelete }: { webhook: DiscordWebhook, o
             </div>
 
             <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className={clsx("w-2 h-2 rounded-full shadow-[0_0_10px]", webhook.enabled ? "bg-emerald-500 shadow-emerald-500/50" : "bg-white/20 shadow-none")} />
-                    <span className={clsx("text-xs font-bold uppercase tracking-wider", webhook.enabled ? "text-emerald-500" : "text-white/40")}>
-                        {webhook.enabled ? "Active" : "Disabled"}
-                    </span>
-                </div>
+                <span className={clsx("text-xs font-bold uppercase tracking-wider", webhook.enabled ? "text-emerald-500" : "text-white/40")}>
+                    {webhook.enabled ? "Active" : "Disabled"}
+                </span>
                 <div className="text-xs font-medium text-white/40 bg-white/5 px-2 py-1 rounded-md">
                     {eventCount} Events
                 </div>

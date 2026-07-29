@@ -41,8 +41,11 @@ const deleteOldConcurrent = db.prepare(
 const deleteOldRuleEvents = db.prepare(
   "DELETE FROM rule_events WHERE triggeredAt < ?"
 );
-const deleteOldFinishedJobs = db.prepare(
-  "DELETE FROM jobs WHERE status IN ('completed', 'failed') AND updatedAt < ?"
+// Non-terminal rows are included deliberately: a job that has not been touched
+// in weeks belongs to a process that is long gone, and startup reclamation only
+// helps instances that actually restart.
+const deleteOldJobs = db.prepare(
+  "DELETE FROM jobs WHERE updatedAt < ?"
 );
 
 export const runRetentionSweepIfDue = () => {
@@ -60,13 +63,13 @@ export const runRetentionSweepIfDue = () => {
   const txn = db.transaction(() => {
     const c = deleteOldConcurrent.run(concurrentCutoff).changes;
     const r = deleteOldRuleEvents.run(ruleEventsCutoff).changes;
-    const j = deleteOldFinishedJobs.run(jobsCutoff).changes;
+    const j = deleteOldJobs.run(jobsCutoff).changes;
     return { c, r, j };
   });
 
   const result = txn();
   setSetting(LAST_RUN_KEY, today);
   Logger.info(
-    `[Retention] Pruned ${result.c} concurrent_snapshots, ${result.r} rule_events, ${result.j} finished jobs (cutoff anchor ${nowIso}).`
+    `[Retention] Pruned ${result.c} concurrent_snapshots, ${result.r} rule_events, ${result.j} jobs (cutoff anchor ${nowIso}).`
   );
 };

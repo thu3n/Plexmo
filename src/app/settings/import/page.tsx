@@ -194,95 +194,91 @@ export default function ImportSettingsPage() {
                 title="Data Management"
                 description="Export your data for backup or import from other sources."
             >
-                <div className="grid gap-8 lg:grid-cols-[2fr,1fr]">
-                    <div className="space-y-6">
+                <div className="grid gap-6 2xl:grid-cols-2 2xl:items-start">
 
-                        {/* Backup & Restore */}
-                        <BackupRestoreCard />
+                    {/* Backup & Restore */}
+                    <BackupRestoreCard />
 
-                        {/* Import Section */}
-                        <SettingsCard>
-                            <div className="animate-in fade-in slide-in-from-right-2 duration-200">
-                                <div className="flex gap-4">
-                                    <div className="h-12 w-12 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
-                                        <Database className="w-6 h-6" />
-                                    </div>
-                                    <div className="min-w-0 w-full">
-                                        <h3 className="text-lg font-bold text-white">Tautulli Import</h3>
-                                        <p className="text-sm text-white/50 mt-1 mb-6">Import history directly from your Tautulli instance via API.</p>
+                    {/* Import Section */}
+                    <SettingsCard>
+                        <div className="animate-in fade-in slide-in-from-right-2 duration-200">
+                            <div className="flex gap-4">
+                                <div className="h-12 w-12 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                                    <Database className="w-6 h-6" />
+                                </div>
+                                <div className="min-w-0 w-full">
+                                    <h3 className="text-lg font-bold text-white">Tautulli Import</h3>
+                                    <p className="text-sm text-white/50 mt-1 mb-6">Import history directly from your Tautulli instance via API.</p>
 
-                                        {/* API Import UI - Multi Step */}
-                                        <div className="space-y-6">
-                                            {step === 'connect' && (
-                                                <form onSubmit={handleConnect} className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-white/70 uppercase mb-1.5">Tautulli URL</label>
-                                                            <input type="url" required placeholder="http://192.168.1.50:8181" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors" />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-bold text-white/70 uppercase mb-1.5">API Key</label>
-                                                            <input type="text" required placeholder="Enter your Tautulli API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono" />
-                                                        </div>
+                                    {/* API Import UI - Multi Step */}
+                                    <div className="space-y-6">
+                                        {step === 'connect' && (
+                                            <form onSubmit={handleConnect} className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-white/70 uppercase mb-1.5">Tautulli URL</label>
+                                                        <input type="url" required placeholder="http://192.168.1.50:8181" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors" />
                                                     </div>
-                                                    <button type="submit" disabled={isProcessing} className="w-full py-3 rounded-xl bg-amber-500 text-white font-bold hover:bg-amber-400 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 mt-2">
-                                                        {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
-                                                        {isProcessing ? "Connecting..." : "Connect"}
-                                                    </button>
-                                                </form>
-                                            )}
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-white/70 uppercase mb-1.5">API Key</label>
+                                                        <input type="text" required placeholder="Enter your Tautulli API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-amber-500/50 transition-colors font-mono" />
+                                                    </div>
+                                                </div>
+                                                <button type="submit" disabled={isProcessing} className="w-full py-3 rounded-xl bg-amber-500 text-white font-bold hover:bg-amber-400 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 mt-2">
+                                                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
+                                                    {isProcessing ? "Connecting..." : "Connect"}
+                                                </button>
+                                            </form>
+                                        )}
 
-                                            {step === 'source_select' && (
-                                                <ServerMappingStep
-                                                    sourceServers={sourceServers}
-                                                    plexmoServers={plexmoServers}
-                                                    manualMapping={manualMapping}
-                                                    ignoredServers={ignoredServers}
-                                                    isProcessing={isProcessing}
-                                                    toggleIgnore={toggleIgnore}
-                                                    setManualMapping={setManualMapping}
-                                                    onCancel={resetApiImport}
-                                                    onStartImport={handleStartImport}
-                                                />
-                                            )}
+                                        {step === 'source_select' && (
+                                            <ServerMappingStep
+                                                sourceServers={sourceServers}
+                                                plexmoServers={plexmoServers}
+                                                manualMapping={manualMapping}
+                                                ignoredServers={ignoredServers}
+                                                isProcessing={isProcessing}
+                                                toggleIgnore={toggleIgnore}
+                                                setManualMapping={setManualMapping}
+                                                onCancel={resetApiImport}
+                                                onStartImport={handleStartImport}
+                                            />
+                                        )}
 
-                                            {(step === 'importing' || step === 'completed') && (
-                                                <ImportProgressStep
-                                                    step={step}
-                                                    status={status}
-                                                    currentJob={currentJob}
-                                                    showDetails={showDetails}
-                                                    setShowDetails={setShowDetails}
-                                                    onReset={resetApiImport}
-                                                />
-                                            )}
+                                        {(step === 'importing' || step === 'completed') && (
+                                            <ImportProgressStep
+                                                step={step}
+                                                status={status}
+                                                currentJob={currentJob}
+                                                showDetails={showDetails}
+                                                setShowDetails={setShowDetails}
+                                                onReset={resetApiImport}
+                                            />
+                                        )}
 
-                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </SettingsCard>
+                        </div>
+                    </SettingsCard>
 
-                        {/* Status Message (Only show for non-API flow or unexpected errors, API flow has its own UI) */}
-                        {status && step === 'connect' && (
-                            <div className={clsx(
-                                "p-4 rounded-xl border flex items-start gap-3 animate-in fade-in slide-in-from-top-2",
-                                status.success
-                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                    : "bg-rose-500/10 border-rose-500/20 text-rose-400"
-                            )}>
-                                {status.success ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <XCircle className="w-5 h-5 shrink-0" />}
-                                <div className="min-w-0 break-words">
-                                    <h4 className="font-bold text-sm">{status.success ? "Success" : "Error"}</h4>
-                                    <p className="text-sm opacity-80 mt-1">{status.message || status.error}</p>
-                                </div>
+                    {/* Status Message (Only show for non-API flow or unexpected errors, API flow has its own UI) */}
+                    {status && step === 'connect' && (
+                        <div className={clsx(
+                            "p-4 rounded-xl border flex items-start gap-3 animate-in fade-in slide-in-from-top-2 2xl:col-span-2",
+                            status.success
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                : "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                        )}>
+                            {status.success ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <XCircle className="w-5 h-5 shrink-0" />}
+                            <div className="min-w-0 break-words">
+                                <h4 className="font-bold text-sm">{status.success ? "Success" : "Error"}</h4>
+                                <p className="text-sm opacity-80 mt-1">{status.message || status.error}</p>
                             </div>
-                        )}
-                    </div>
-                    {/* Sidebar / Info Column */}
-                    <div></div>
-                </div >
-            </SettingsSection >
+                        </div>
+                    )}
+                </div>
+            </SettingsSection>
 
             <SettingsSection
                 title="Tautulli Database File"

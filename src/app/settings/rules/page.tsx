@@ -29,7 +29,7 @@ export default function RulesPage() {
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
                         {t("rules.pageTitle")}
                     </h1>
-                    <p className="text-white/40 mt-2">
+                    <p className="text-white/40 mt-2 max-w-2xl">
                         {t("rules.pageDesc")}
                     </p>
                 </div>
@@ -58,7 +58,7 @@ export default function RulesPage() {
             </div>
 
             {activeTab === "list" ? (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
                     {/* Rule Cards */}
                     {rules?.map((rule) => (
                         <div key={rule.id} className="h-full">
