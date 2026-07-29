@@ -18,7 +18,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: appName,
     short_name: appName,
-    description: "Modern live-översikt för din Plex-server",
+    description: "Live monitoring and analytics for your Plex servers",
     start_url: "/",
     scope: "/",
     display: "standalone",

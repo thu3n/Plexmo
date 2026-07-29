@@ -3,18 +3,28 @@
 [![MIT License](https://img.shields.io/github/license/thu3n/plexmo)](https://github.com/thu3n/plexmo/blob/main/LICENSE)
 [![Vibe Coded](https://img.shields.io/badge/✨-vibe_coded-blueviolet)](https://github.com/thu3n/plexmo)
 
-Plexmo is a free and open source monitoring and analytics dashboard for your Plex ecosystem. Designed as a modern alternative to Tautulli, Plexmo's standout feature is **native multi-server support** - seamlessly monitor and manage multiple Plex servers from a single, beautiful interface. Built with a focus on simplicity and aesthetics, it provides deep insights into your media library and viewing patterns across your entire Plex infrastructure.
+**A modern Plex dashboard that treats your servers as one.**
+
+Plexmo is a free and open source monitoring and analytics dashboard for Plex - a modern alternative to Tautulli, built for people who run more than one server.
+
+**Connect as many Plex servers as you want to a single Plexmo instance.** Users are identified by their Plex account, not by the server they happen to be streaming from, so someone who watches across three of your servers is one person in your stats - one watch history, one set of automation rules. No container per server, no exports to stitch together.
+
+It runs as a single container with an embedded database: one volume to back up, no separate database or cache service to operate.
 
 ![Plexmo Dashboard](public/screenshots/Dashboard.png)
 
 ## Features
 
-- **Real-time Session Monitoring** - Monitor active streams across all connected Plex servers simultaneously with detailed playback information
-- **Advanced Statistics** - Comprehensive analytics including watch history, user behavior, content trends, and viewing streaks
-- **Tautulli Import** - Seamless migration of your watch history from Tautulli
+- **Unified Multi-Server View** - Every server in one dashboard, with per-server breakdowns whenever you want them. Add and remove servers without losing history
+- **One Identity Per Person** - The same Plex account across several servers is merged into a single user, so watch time, streaks and rankings reflect the person rather than the server
+- **Real-time Session Monitoring** - Live streams across all connected servers at once, with full playback and transcode detail
+- **Advanced Statistics** - Watch history, user behavior, content trends, concurrent-stream peaks and viewing streaks
+- **Automation Rules** - Concurrent stream limits and scheduled access windows, applied per user or globally, with optional auto-termination, a custom message to the viewer, and Discord alerts
+- **Tautulli Import** - Bring your existing watch history with you, from the Tautulli API or straight from its database file
 - **Discord Integration** - Push notifications and activity updates directly to your Discord server
-- **Multi-admin Authentication** - Secure access control with Plex-based authentication for administrators
-- **Responsive Design** - Mobile-friendly interface that's continuously evolving with ongoing improvements
+- **Multi-admin Authentication** - Plex sign-in with invite links: hand someone a single-use link and they either join as a viewer or connect their own Plex server to your instance
+- **Installs Like an App** - Progressive web app with its own icon, splash screen and name - add it to your phone's home screen and it opens standalone
+- **Single Container** - One image, one volume, an embedded SQLite database, and a full backup you can download as a single file
 
 <details>
 <summary>📸 View Screenshots</summary>
