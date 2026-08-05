@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import useSWR from "swr";
+import { useAuthMe } from "@/lib/use-auth-me";
 
 /**
  * Client-side session guard. The service worker serves the cached "/" shell
@@ -19,23 +19,12 @@ export const GUARD_EXEMPT_PREFIXES = ["/login", "/setup", "/invite"];
 export const isGuardExempt = (pathname: string): boolean =>
     GUARD_EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
-type AuthError = Error & { status?: number };
-
-const authFetcher = async (url: string) => {
-    const response = await fetch(url);
-    if (!response.ok) {
-        const error: AuthError = new Error("auth check failed");
-        error.status = response.status;
-        throw error;
-    }
-    return response.json();
-};
-
 export function SessionGuard() {
     const pathname = usePathname();
-    // Same key as GlobalDock/UserMenu — SWR dedupes the request.
-    const { error } = useSWR("/api/auth/me", authFetcher);
-    const status = (error as AuthError | undefined)?.status;
+    // Shared key AND shared fetcher with GlobalDock/UserMenu (useAuthMe) — a
+    // divergent non-throwing fetcher on this key once won SWR's dedupe race
+    // and swallowed the 401 this guard depends on.
+    const { status } = useAuthMe();
 
     useEffect(() => {
         if (status !== HTTP_UNAUTHORIZED || isGuardExempt(pathname)) return;

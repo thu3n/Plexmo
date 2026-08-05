@@ -111,10 +111,15 @@ export async function middleware(request: NextRequest) {
                 response = NextResponse.redirect(new URL("/invite/continue", request.url));
             }
         }
-        // If user is NOT logged in and tries to access a protected route
+        // If user is NOT logged in and tries to access a protected route.
+        // API calls must get machine-readable 401 JSON — fetch() follows a 307
+        // to /login silently, handing the login page's HTML to res.json()
+        // (Safari surfaces that as "The string did not match the expected
+        // pattern"). Only page navigations are redirected.
         else if (!user && !isPublicPath(pathname)) {
-            const loginUrl = new URL("/login", request.url);
-            response = NextResponse.redirect(loginUrl);
+            response = pathname.startsWith("/api/")
+                ? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+                : NextResponse.redirect(new URL("/login", request.url));
         }
         // If user IS logged in and tries to access Login page -> Redirect to Dashboard
         else if (user && pathname === "/login") {

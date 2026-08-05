@@ -31,6 +31,25 @@ describe("fetchJsonOrThrow", () => {
         await expect(fetchJsonOrThrow("/api/history")).rejects.toThrow("Unauthorized");
     });
 
+    it("explains a 200 whose body is not JSON instead of leaking the parse error", async () => {
+        // A silently-followed redirect (login page, proxy interstitial) hands
+        // HTML to res.json() — WebKit's raw parse error is the useless
+        // "The string did not match the expected pattern".
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => {
+                    throw new Error("The string did not match the expected pattern.");
+                },
+            })),
+        );
+        await expect(fetchJsonOrThrow("/api/dashboard")).rejects.toThrow(
+            "Unexpected non-JSON response (200)",
+        );
+    });
+
     it("falls back to a status-based message when the error body is not JSON", async () => {
         vi.stubGlobal(
             "fetch",

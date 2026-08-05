@@ -1,20 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/components/LanguageContext";
 import { useDesktopNavMode } from "@/lib/desktop-nav-preference";
+import { useAuthMe } from "@/lib/use-auth-me";
 import { avatarSrc } from "@/lib/avatar";
-
-type User = {
-    id: string;
-    username: string;
-    email: string;
-    thumb: string;
-};
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 type UserMenuProps = {
     align?: "top-right" | "bottom-left";
@@ -23,7 +14,7 @@ type UserMenuProps = {
 export function UserMenu({ align = "top-right" }: UserMenuProps) {
     const { t } = useLanguage();
     const router = useRouter();
-    const { data } = useSWR<{ user: User }>("/api/auth/me", fetcher);
+    const { user } = useAuthMe();
 
     // Nav items live in the global dock on mobile (<lg, always visible) but
     // must stay reachable on desktop, where the dock is opt-in and hidden by
@@ -49,8 +40,6 @@ export function UserMenu({ align = "top-right" }: UserMenuProps) {
 
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-
-    const user = data?.user;
 
     const handleLogout = async () => {
         await fetch("/api/auth/logout", { method: "POST" });

@@ -10,5 +10,11 @@ export const fetchJsonOrThrow = async <T = unknown>(url: string): Promise<T> => 
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error || `Request failed (${res.status})`);
   }
-  return res.json() as Promise<T>;
+  // A 200 that isn't JSON means a redirect was silently followed to an HTML
+  // page (login, reverse-proxy interstitial). Raw parse errors are cryptic in
+  // WebKit ("The string did not match the expected pattern") — say what
+  // actually happened instead.
+  return res.json().catch(() => {
+    throw new Error(`Unexpected non-JSON response (${res.status})`);
+  }) as Promise<T>;
 };

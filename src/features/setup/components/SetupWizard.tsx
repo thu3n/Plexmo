@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
 import { useLanguage } from "@/components/LanguageContext";
+import { useAuthMe } from "@/lib/use-auth-me";
 import { usePlexPin } from "../hooks/usePlexPin";
 import { useServerSetup } from "../hooks/useServerSetup";
 import { StepIndicator } from "./StepIndicator";
@@ -13,8 +13,6 @@ import ServerConfigStep from "./ServerConfigStep";
 import { RestoreStep } from "./RestoreStep";
 
 export type SetupMode = "setup" | "invite-onboarding" | "invite-access";
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const containerVariants: Variants = {
     hidden: { opacity: 0, scale: 0.95 },
@@ -39,8 +37,8 @@ export function SetupWizard({
     loginExtra?: React.ReactNode;
 }) {
     const { t } = useLanguage();
-    const { data: userData, mutate: mutateUser } = useSWR("/api/auth/me", fetcher);
-    const isAuthenticated = Boolean(userData && userData.user);
+    const { user, mutate: mutateUser } = useAuthMe();
+    const isAuthenticated = Boolean(user);
     const [saved, setSaved] = useState(false);
     const [showRestore, setShowRestore] = useState(false);
 

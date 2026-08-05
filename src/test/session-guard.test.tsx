@@ -2,6 +2,8 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionGuard, isGuardExempt } from "@/components/SessionGuard";
+import { GlobalDock } from "@/components/GlobalDock";
+import { LanguageProvider } from "@/components/LanguageContext";
 
 const { pathnameMock } = vi.hoisted(() => ({ pathnameMock: vi.fn(() => "/") }));
 vi.mock("next/navigation", () => ({ usePathname: pathnameMock }));
@@ -47,6 +49,23 @@ describe("SessionGuard", () => {
         renderGuard();
         await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/login"));
         expect(replaceMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("redirects even when GlobalDock mounts first on the shared auth key", async () => {
+        // Regression: GlobalDock precedes SessionGuard in the root layout, so
+        // its fetcher wins SWR's per-key dedupe. When that fetcher didn't
+        // throw on 401, the guard never saw an error and the redirect was
+        // silently disarmed — every consumer must share useAuthMe's fetcher.
+        stubFetch(401);
+        render(
+            <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+                <LanguageProvider>
+                    <GlobalDock />
+                    <SessionGuard />
+                </LanguageProvider>
+            </SWRConfig>,
+        );
+        await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/login"));
     });
 
     it("does nothing when the session is valid", async () => {

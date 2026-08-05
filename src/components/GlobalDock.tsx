@@ -1,16 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import useSWR from "swr";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { useLanguage } from "@/components/LanguageContext";
 import { useDesktopNavMode } from "@/lib/desktop-nav-preference";
+import { useAuthMe } from "@/lib/use-auth-me";
 import { PRIMARY_NAV_ITEMS, isNavItemActive } from "@/components/nav-items";
-
-type DockUser = { username: string; thumb: string };
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 const HIDDEN_PREFIXES = ["/login", "/setup"];
 
@@ -24,9 +20,8 @@ export function GlobalDock() {
     const pathname = usePathname();
     const { t } = useLanguage();
     const [navMode] = useDesktopNavMode();
-    const { data } = useSWR<{ user: DockUser }>("/api/auth/me", fetcher);
+    const { user } = useAuthMe();
 
-    const user = data?.user;
     if (!user || HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return null;
 
     const activeIndex = PRIMARY_NAV_ITEMS.findIndex((item) => isNavItemActive(item, pathname));
