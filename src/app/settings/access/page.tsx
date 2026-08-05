@@ -1,13 +1,9 @@
 "use client";
 
 import { SettingsSection } from "@/features/settings/components/ui/SettingsShell";
-import { useLanguage } from "@/components/LanguageContext";
-import { AccessUserList } from "@/features/settings/components/access/AccessUserList";
 import { InviteList } from "@/features/settings/components/access/InviteList";
 
 export default function AccessSettingsPage() {
-    const { t } = useLanguage();
-
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <SettingsSection
@@ -15,12 +11,6 @@ export default function AccessSettingsPage() {
                 description="One-time links that grant access without knowing someone's email up front. Full onboarding lets a co-admin connect their own Plex server; access only makes them a viewer on yours."
             >
                 <InviteList />
-            </SettingsSection>
-            <SettingsSection
-                title={t("settings.access")}
-                description={t("settings.accessDesc")}
-            >
-                <AccessUserList />
             </SettingsSection>
         </div>
     );
