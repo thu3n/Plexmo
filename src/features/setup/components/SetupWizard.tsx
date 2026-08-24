@@ -53,7 +53,10 @@ export function SetupWizard({
     });
     const setup = useServerSetup({
         onSaved: () => setSaved(true),
-        onUnauthorized: () => mutateUser(),
+        // Discard mutate's typed return — the callback contract is void.
+        onUnauthorized: () => {
+            void mutateUser();
+        },
     });
 
     const steps = hasServerStep
