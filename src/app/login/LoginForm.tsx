@@ -15,6 +15,11 @@ export default function LoginForm() {
     const [status, setStatus] = useState<string>("");
     const popupRef = useRef<Window | null>(null);
 
+    const startPolling = (pinId: string) => {
+        setStatus(t("login.authenticating") || "Waiting for Plex...");
+        setPollingId(pinId);
+    };
+
     const pollForAuth = useCallback(async (pinId: string) => {
         try {
             const res = await fetch("/api/auth/plex", {
@@ -55,8 +60,6 @@ export default function LoginForm() {
     useEffect(() => {
         if (!pollingId) return;
 
-        setStatus(t("login.authenticating") || "Waiting for Plex...");
-
         // Poll every 2 seconds
         const interval = setInterval(async () => {
             const stop = await pollForAuth(pollingId);
@@ -66,7 +69,7 @@ export default function LoginForm() {
         }, 2000);
 
         return () => clearInterval(interval);
-    }, [pollingId, pollForAuth, t]);
+    }, [pollingId, pollForAuth]);
 
     const handleLogin = async () => {
         setIsLoading(true);
@@ -83,7 +86,7 @@ export default function LoginForm() {
                 if (!res.ok) throw new Error(t("login.error"));
                 const data = await res.json();
                 setStandaloneAuthUrl(data.authUrl);
-                setPollingId(data.id);
+                startPolling(data.id);
             } catch (e) {
                 setError(e instanceof Error ? e.message : t("login.error"));
                 setIsLoading(false);
@@ -122,7 +125,7 @@ export default function LoginForm() {
             }
 
             // 4. Start Polling
-            setPollingId(data.id);
+            startPolling(data.id);
         } catch (e) {
             setError(e instanceof Error ? e.message : t("login.error"));
             setIsLoading(false);

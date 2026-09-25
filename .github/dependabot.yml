@@ -1,0 +1,35 @@
+version: 2
+
+# Updates land on develop: main auto-deploys to prod via Watchtower, so every
+# bump must pass the develop image first. Majors are left ungrouped so each
+# breaking upgrade gets its own reviewable PR.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    # Node majors are an LTS decision (odd/current releases never go LTS),
+    # not something to take automatically.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

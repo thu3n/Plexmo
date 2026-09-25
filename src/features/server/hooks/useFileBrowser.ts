@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import useSWR from "swr";
+import { fetchJsonOrThrow } from "@/lib/swr-fetch";
 
 type FileItem = {
     name: string;
@@ -13,48 +15,38 @@ type FileResponse = {
 };
 
 export function useFileBrowser(initialPath: string = "", isOpen: boolean = true) {
-    const [currentPath, setCurrentPath] = useState(initialPath);
-    const [data, setData] = useState<FileResponse | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
+    const [requestedPath, setRequestedPath] = useState(initialPath);
+    const [wasOpen, setWasOpen] = useState(isOpen);
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchPath(initialPath || "");
-        }
-    }, [isOpen]);
+    // Every fresh open starts back at initialPath, not wherever the last
+    // session navigated to.
+    if (isOpen !== wasOpen) {
+        setWasOpen(isOpen);
+        if (isOpen) setRequestedPath(initialPath);
+    }
 
-    const fetchPath = async (path: string) => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await fetch(`/api/filesystem?path=${encodeURIComponent(path)}`);
-            if (!res.ok) throw new Error("Failed to load directory");
-            const json = await res.json();
-            setData(json);
-            setCurrentPath(json.currentPath);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { data, error, isLoading } = useSWR<FileResponse>(
+        isOpen ? `/api/filesystem?path=${encodeURIComponent(requestedPath)}` : null,
+        fetchJsonOrThrow,
+        // A failed or in-flight navigation keeps showing the last good listing's path.
+        { keepPreviousData: true, revalidateOnFocus: false }
+    );
 
     const navigateUp = () => {
         if (data?.parent) {
-            fetchPath(data.parent);
+            setRequestedPath(data.parent);
         }
     };
 
     const navigateTo = (path: string) => {
-        fetchPath(path);
+        setRequestedPath(path);
     };
 
     return {
-        currentPath,
-        data,
-        loading,
-        error,
+        currentPath: data?.currentPath ?? requestedPath,
+        data: data ?? null,
+        loading: isLoading,
+        error: error instanceof Error ? error.message : "",
         navigateUp,
         navigateTo
     };

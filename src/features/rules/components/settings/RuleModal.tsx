@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
 import clsx from "clsx";
 import useSWR from "swr";
@@ -89,7 +89,11 @@ export default function RuleModal({ rule, isOpen, onClose, onSave }: RuleModalPr
 
     const [search, setSearch] = useState("");
 
-    useEffect(() => {
+    // The modal stays mounted between opens, so reset the form during render
+    // whenever the target rule or open state changes.
+    const [syncedFor, setSyncedFor] = useState({ rule, isOpen });
+    if (syncedFor.rule !== rule || syncedFor.isOpen !== isOpen) {
+        setSyncedFor({ rule, isOpen });
         if (rule) {
             setFormData(rule);
             setPendingAssignments({ userIds: new Set(), serverIds: new Set() });
@@ -105,7 +109,7 @@ export default function RuleModal({ rule, isOpen, onClose, onSave }: RuleModalPr
             setPendingAssignments({ userIds: new Set(), serverIds: new Set() });
             setActiveTab("config");
         }
-    }, [rule, isOpen]);
+    }
 
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [impactData, setImpactData] = useState<{ username: string, oldLimit: any, newLimit: any }[]>([]);

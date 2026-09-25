@@ -13,8 +13,14 @@ const TICK_MS = 1000;
  */
 function useLiveOffset(viewOffset: number, duration: number, state: string): number {
     const [currentOffset, setCurrentOffset] = useState(viewOffset);
+    const [syncedOffset, setSyncedOffset] = useState(viewOffset);
 
-    useEffect(() => { setCurrentOffset(viewOffset); }, [viewOffset]);
+    // Resync to a fresh server offset during render rather than in an effect,
+    // so the ticker never paints one stale frame before snapping.
+    if (viewOffset !== syncedOffset) {
+        setSyncedOffset(viewOffset);
+        setCurrentOffset(viewOffset);
+    }
 
     useEffect(() => {
         if (state !== "playing") return;

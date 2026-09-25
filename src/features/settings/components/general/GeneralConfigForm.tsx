@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import useSWR from "swr";
 import { SettingsCard } from "@/features/settings/components/ui/SettingsShell";
 import { useLanguage } from "@/components/LanguageContext";
@@ -18,13 +18,13 @@ export function GeneralConfigForm() {
 
     const { data: settingsData, mutate: mutateSettings } = useSWR<Record<string, string>>("/api/settings", fetchJson);
 
-    useEffect(() => {
-        if (settingsData?.["APP_NAME"]) {
-            setFormAppName(settingsData["APP_NAME"]);
-        } else {
-            setFormAppName("Plexmo");
-        }
-    }, [settingsData]);
+    // Mirror each fresh settings payload into the input during render. The null
+    // seed never equals SWR's undefined, so the "Plexmo" fallback shows on mount.
+    const [syncedSettings, setSyncedSettings] = useState<Record<string, string> | undefined | null>(null);
+    if (settingsData !== syncedSettings) {
+        setSyncedSettings(settingsData);
+        setFormAppName(settingsData?.["APP_NAME"] || "Plexmo");
+    }
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
