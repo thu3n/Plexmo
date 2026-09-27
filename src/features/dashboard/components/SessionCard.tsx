@@ -87,14 +87,15 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
                 </div>
             )}
 
-            {/* Stop Button (Hover Reveal) */}
+            {/* Stop Button (Hover Reveal) — top-left over the poster so it never
+                covers the avatar link; nudged below the limit badge when shown */}
             <button
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setShowStopConfirm(true);
                 }}
-                className="absolute top-2 right-2 z-40 bg-black/60 hover:bg-rose-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 group-data-[reveal=true]:opacity-100 transition-all duration-300 backdrop-blur-sm shadow-xl translate-y-2 group-hover:translate-y-0 group-data-[reveal=true]:translate-y-0"
+                className={`absolute ${isLimitExceeded ? "top-7" : "top-2"} left-2 z-40 bg-black/60 hover:bg-rose-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 group-data-[reveal=true]:opacity-100 transition-all duration-300 backdrop-blur-sm shadow-xl translate-y-2 group-hover:translate-y-0 group-data-[reveal=true]:translate-y-0`}
                 title="Stop Stream"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -115,7 +116,7 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
                             <img src="/images/Plexmo_icon.png" alt="No Poster" className="h-16 w-16 object-contain opacity-20 grayscale" />
                         </div>
                     )}
-                    <div className="absolute top-2 left-2 shadow-lg" title={session.player}>
+                    <div className="absolute top-2 right-2 shadow-lg" title={session.player}>
                         {session.player && getPlayerIcon(session.player, session.platform, "w-6 h-6 rounded-md shadow-lg")}
                     </div>
                 </div>
