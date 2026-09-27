@@ -130,8 +130,11 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
             {/* Top Section: Poster + Info — sized to include the footer
                 overlay's space so the card matches its pre-overlay height */}
             <div className="flex flex-row h-[17.75rem] sm:h-[19.75rem] w-full relative">
-                {/* Poster - Left Side */}
-                <div className="relative w-[38%] shrink-0 overflow-hidden border-r border-white/5">
+                {/* Poster - Left Side. Never narrower than the original 38%, but
+                    on wide cards it grows to the poster's full 2:3 width (row
+                    height × 2/3) so nothing is cropped — capped so the metadata
+                    column keeps at least 14rem. */}
+                <div className="relative w-[max(38%,min(calc(17.75rem*2/3),calc(100%_-_14rem)))] sm:w-[max(38%,min(calc(19.75rem*2/3),calc(100%_-_14rem)))] shrink-0 overflow-hidden border-r border-white/5">
                     {session.thumb ? (
                         <div className="absolute inset-0">
                             <img

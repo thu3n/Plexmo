@@ -169,7 +169,7 @@ export default function Home() {
         className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 border-b safe-top ${scrolled ? "bg-black/80 border-white/5" : "bg-transparent border-transparent"
           }`}
       >
-        <div className="mx-auto max-w-[1600px] px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+        <div className="mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -197,7 +197,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-[1600px] px-4 sm:px-6 main-safe-top pb-dock">
+      <main className="relative z-10 mx-auto px-4 sm:px-6 main-safe-top pb-dock">
 
         {/* Stats Grid - Horizontal Scroll on Mobile */}
         <section className="mb-10 w-full overflow-x-auto pb-4 snap-x snap-mandatory flex gap-4 md:grid md:grid-cols-3 xl:grid-cols-5 md:overflow-visible md:pb-0 no-scrollbar">
