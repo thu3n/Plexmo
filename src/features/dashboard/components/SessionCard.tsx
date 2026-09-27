@@ -2,60 +2,22 @@
 
 import type { PlexSession } from "@/lib/plex";
 import { avatarSrc } from "@/lib/avatar";
-import { memo, useEffect, useState } from "react";
+import { memo, useState } from "react";
 import Link from "next/link";
-import { ChevronUp } from "lucide-react";
-import { useLanguage } from "@/components/LanguageContext";
-import {
-    getPlayerIcon,
-    DetailBadge,
-    HoverReveal,
-    formatCodec,
-    formatVideoRes,
-    formatAudioChannels
-} from "@/features/history/components/HistoryHelpers";
-import {
-    stateColor,
-} from "../utils/sessionUtils";
+import { getPlayerIcon } from "@/features/history/components/HistoryHelpers";
+import { stateColor } from "../utils/sessionUtils";
 import { SessionElapsedTime, SessionProgressBar } from "./SessionProgress";
+import { SessionDetailGrid } from "./SessionDetailGrid";
 import { useSessionActions } from "../hooks/useSessionActions";
 
-// Tap-opened info bars slide back down on their own — toast-style timing:
-// long enough to read, short enough to not feel stuck.
-const FOOTER_AUTO_COLLAPSE_MS = 6000;
-
 const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: PlexSession; serverColor?: string; isLimitExceeded?: boolean }) => {
-    const { t } = useLanguage();
     const { stopStream, isTerminating } = useSessionActions();
 
     const barColor = serverColor || "#f59e0b";
-    const isTranscoding = session.decision?.toLowerCase() === "transcode";
     const isTV = /^(S\d+|\d+x\d+)/.test(session.subtitle || "") || /^S\d+ E\d+$/.test(session.subtitle || "");
 
     // Stop Stream State
     const [showStopConfirm, setShowStopConfirm] = useState(false);
-
-    // Footer bar overlay: collapsed by default so the full poster/details
-    // show. Desktop reveals it on hover via pure CSS (Tailwind v4 gates
-    // hover: behind @media (hover: hover)); this state is the touch-only
-    // tap toggle. The card's flow height never changes, so the grid can't
-    // reflow either way.
-    const [footerOpen, setFooterOpen] = useState(false);
-
-    useEffect(() => {
-        if (!footerOpen) return;
-        const timer = setTimeout(() => setFooterOpen(false), FOOTER_AUTO_COLLAPSE_MS);
-        return () => clearTimeout(timer);
-    }, [footerOpen]);
-
-    const handleCardTap = (event: React.MouseEvent<HTMLDivElement>) => {
-        // Hover-capable devices expand on hover — a click must not latch the
-        // bar. Clicks on real controls (avatar link, stop button) keep their
-        // own behavior.
-        if (!window.matchMedia("(hover: none)").matches) return;
-        if ((event.target as HTMLElement).closest("a,button")) return;
-        setFooterOpen((prev) => !prev);
-    };
 
     const handleStopClick = async () => {
         const idToUse = session.sessionId || session.sessionKey;
@@ -64,11 +26,12 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
         }
     };
 
-    const bitrate = session.quality || (session.bandwidth ? `${Math.round(session.bandwidth / 1000 * 10) / 10} Mbps` : null);
+    const posterSrc = session.thumb
+        ? `/api/image?path=${encodeURIComponent(session.thumb)}&serverId=${session.serverId || ""}`
+        : null;
 
     return (
         <div
-            onClick={handleCardTap}
             className={`group glass-panel rounded-2xl overflow-hidden flex flex-col h-full transform transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-black/50 relative ${isLimitExceeded ? "ring-2 ring-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.3)]" : ""}`}
         >
 
@@ -127,253 +90,79 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
                 </svg>
             </button>
 
-            {/* Top Section: Poster + Info — sized to include the footer
-                overlay's space so the card matches its pre-overlay height */}
-            <div className="flex flex-row h-[17.75rem] sm:h-[19.75rem] w-full relative">
-                {/* Poster - Left Side. Never narrower than the original 38%, but
-                    on wide cards it grows to the poster's full 2:3 width (row
-                    height × 2/3) so nothing is cropped — capped so the metadata
-                    column keeps at least 14rem. */}
-                <div className="relative w-[max(38%,min(calc(17.75rem*2/3),calc(100%_-_14rem)))] sm:w-[max(38%,min(calc(19.75rem*2/3),calc(100%_-_14rem)))] shrink-0 overflow-hidden border-r border-white/5">
-                    {session.thumb ? (
-                        <div className="absolute inset-0">
-                            <img
-                                src={`/api/image?path=${encodeURIComponent(session.thumb)}&serverId=${session.serverId || ""}`}
-                                alt={session.title}
-                                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-90 group-hover:opacity-100"
-                            />
-                            {/* Gradient Overlay */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                        </div>
+            {/* Poster band: the poster doubles as a dimmed backdrop (plain opacity,
+                no blur — stacked filters were the iOS WebKit lag driver) and sits
+                whole on top, so it is never cropped regardless of card width */}
+            <div className="relative flex items-end gap-3.5 p-3.5 min-h-[168px] overflow-hidden">
+                {posterSrc && (
+                    <div className="absolute inset-0 opacity-40" aria-hidden="true">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={posterSrc} alt="" className="h-full w-full object-cover scale-110" />
+                    </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 to-slate-950/85" aria-hidden="true" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent to-70%" aria-hidden="true" />
+
+                <div className="relative z-10 w-[92px] aspect-[2/3] shrink-0 overflow-hidden rounded-xl bg-slate-900 shadow-[0_10px_24px_rgba(0,0,0,0.6)] ring-1 ring-white/10">
+                    {posterSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={posterSrc} alt={session.title} className="h-full w-full object-cover" />
                     ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-slate-900">
+                        <div className="flex h-full w-full items-center justify-center">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                                src="/images/Plexmo_icon.png"
-                                alt="No Poster"
-                                className="h-16 w-16 object-contain opacity-20 grayscale"
-                            />
+                            <img src="/images/Plexmo_icon.png" alt="No Poster" className="h-10 w-10 object-contain opacity-20 grayscale" />
                         </div>
                     )}
-
-                    {/* Platform Icon - Moved to Poster to save space and fix overlap */}
-                    <div className="absolute top-2 left-2 shadow-lg">
-                        {session.player && getPlayerIcon(session.player, session.platform, "w-6 h-6 rounded-md shadow-lg")}
+                    <div className="absolute top-1.5 left-1.5">
+                        {session.player && getPlayerIcon(session.player, session.platform, "w-5 h-5 rounded-md shadow-lg")}
                     </div>
                 </div>
 
-                {/* Metadata - Right Side */}
-                {/* Inner panels: solid translucency instead of backdrop-blur — stacked
-                    backdrop-filters inside every card were the iOS WebKit lag driver,
-                    and against the dark card surface the blur contribution is invisible. */}
-                <div className="flex-1 min-w-0 p-3 flex flex-col bg-gradient-to-b from-white/5 to-transparent relative z-10 overflow-hidden">
-
-                    <div className={`flex flex-col gap-2 overflow-y-auto no-scrollbar h-full pr-1 transition-[padding] duration-300 group-hover:pb-16 group-focus-within:pb-16 ${footerOpen ? "pb-16" : "pb-1"}`}>
-
-                        {/* Detail Badge Component */}
-                        {(() => {
-
-
-                            return (
-                                <>
-                                    {/* Player */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">{t("session.player")}</span>
-                                        <DetailBadge>{session.player}</DetailBadge>
-                                    </div>
-
-                                    {/* Stream Decision */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">{t("session.stream")}</span>
-                                        <HoverReveal
-                                            isDirect={!isTranscoding && session.decision !== "direct stream"}
-                                            current={
-                                                session.decision === "direct stream" ? <DetailBadge variant="warning">Direct Stream</DetailBadge> :
-                                                    <DetailBadge variant="warning">
-                                                        {t("session.transcode")}
-                                                    </DetailBadge>
-                                            }
-                                            original={<DetailBadge variant="success">{t("session.directPlay")}</DetailBadge>}
-                                        />
-                                    </div>
-
-                                    {/* Quality */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">{t("session.quality")}</span>
-                                        <DetailBadge variant={session.isOriginalQuality || !session.qualityProfile || session.qualityProfile === "Original" ? "success" : "warning"} className="min-w-0 max-w-full">
-                                            <div className="truncate text-ellipsis overflow-hidden whitespace-nowrap">
-                                                <span>
-                                                    {session.isOriginalQuality ? "Original" : (session.qualityProfile || "Original")}
-                                                </span>
-                                                {bitrate && <span className="text-white/40 ml-1">({bitrate})</span>}
-                                            </div>
-                                        </DetailBadge>
-                                    </div>
-
-                                    {/* Container */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">{t("session.container")}</span>
-                                        <HoverReveal
-                                            isDirect={!session.transcodeContainer || session.decision === "direct play"}
-                                            current={<DetailBadge variant="warning">{session.transcodeContainer?.toUpperCase() || ""}</DetailBadge>}
-                                            original={<DetailBadge variant="success">{session.originalContainer?.toUpperCase() || "MKV"}</DetailBadge>}
-                                        />
-                                    </div>
-
-                                    {/* Video */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">VIDEO</span>
-                                        <HoverReveal
-                                            isDirect={session.videoDecision === "direct play" || session.videoDecision === "direct stream"}
-                                            current={
-                                                <DetailBadge variant="warning">
-                                                    {formatCodec(session.transcodeVideoCodec)} {session.transcodeHwEncoding && "(HW)"} {formatVideoRes(session.transcodeHeight)}
-                                                </DetailBadge>
-                                            }
-                                            original={
-                                                <DetailBadge variant={session.videoDecision === "direct stream" ? "warning" : "success"}>
-                                                    {formatCodec(session.originalVideoCodec)} {formatVideoRes(session.originalHeight || session.resolution)}
-                                                </DetailBadge>
-                                            }
-                                        />
-                                    </div>
-
-                                    {/* Audio */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">AUDIO</span>
-                                        <HoverReveal
-                                            isDirect={session.audioDecision === "direct play" || session.audioDecision === "direct stream"}
-                                            current={
-                                                <DetailBadge variant="warning">
-                                                    {formatCodec(session.transcodeAudioCodec)} {session.transcodeAudioChannels === "2" ? "2.0" : formatAudioChannels(session.transcodeAudioChannels)}
-                                                </DetailBadge>
-                                            }
-                                            original={
-                                                <DetailBadge variant={session.audioDecision === "direct stream" ? "warning" : "success"}>
-                                                    {formatCodec(session.originalAudioCodec)} {formatAudioChannels(session.originalAudioChannels)}
-                                                </DetailBadge>
-                                            }
-                                        />
-                                    </div>
-
-                                    {/* Subtitle */}
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">SUB</span>
-                                        {(!session.originalSubtitleCodec && !session.transcodeSubtitleCodec) ? <span className="text-white/30">-</span> :
-                                            <HoverReveal
-                                                isDirect={session.subtitleDecision !== "transcode" && session.subtitleDecision !== "burn"}
-                                                current={
-                                                    <DetailBadge variant="warning">
-                                                        {(session.transcodeSubtitleCodec || session.subtitleDecision || "").toUpperCase()}
-                                                    </DetailBadge>
-                                                }
-                                                original={
-                                                    <DetailBadge variant={session.subtitleDecision === "burn" ? "warning" : "success"}>
-                                                        {(session.originalSubtitleCodec || "Unknown").toUpperCase()}
-                                                    </DetailBadge>
-                                                }
-                                            />
-                                        }
-                                    </div>
-
-                                    {/* Location — Plex Relay is bandwidth-capped by Plex, so flag it loudly */}
-                                    <div className="flex justify-between items-center gap-2 pt-1">
-                                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider shrink-0">{t("session.location")}</span>
-                                        <div className="flex items-center gap-1">
-                                            {session.relayed && (
-                                                <DetailBadge variant="warning">{t("session.relay")}</DetailBadge>
-                                            )}
-                                            <DetailBadge className="text-white/60">
-                                                {session.location ? `${session.location.toUpperCase()}: ${session.ip}` : session.ip}
-                                            </DetailBadge>
-                                        </div>
-                                    </div>
-                                </>
-                            );
-                        })()}
-                    </div>
-                </div>
-            </div>
-
-            {/* Slim progress line at the card's bottom edge — only visible
-                while the footer overlay (which carries the main bar) is away */}
-            <SessionProgressBar
-                viewOffset={session.viewOffset}
-                duration={session.duration}
-                state={session.state}
-                color={barColor}
-                className={`absolute inset-x-0 bottom-0 z-10 h-1 transition-opacity duration-300 group-hover:opacity-0 group-focus-within:opacity-0 ${footerOpen ? "opacity-0" : "opacity-100"}`}
-            />
-
-            {/* Hint that more info slides up on hover/tap */}
-            <ChevronUp
-                className={`absolute bottom-1.5 left-1/2 -translate-x-1/2 z-10 w-4 h-4 text-white/30 pointer-events-none transition-opacity duration-300 group-hover:opacity-0 group-focus-within:opacity-0 ${footerOpen ? "opacity-0" : "opacity-100"}`}
-            />
-
-            {/* Bottom overlay: progress bar + footer slide up on hover/focus
-                (desktop) or tap (touch); at rest they sit below the card edge
-                (root overflow-hidden clips them) */}
-            <div className={`absolute inset-x-0 bottom-0 z-20 transition-transform duration-300 group-hover:translate-y-0 group-focus-within:translate-y-0 ${footerOpen ? "translate-y-0" : "translate-y-full"}`}>
-
-            {/* Progress Bar */}
-            <SessionProgressBar
-                viewOffset={session.viewOffset}
-                duration={session.duration}
-                state={session.state}
-                color={barColor}
-                className="relative z-20 h-1 group-hover:h-1.5 transition-all"
-            />
-
-            {/* Bottom Footer Info */}
-            <div className="bg-black/75 p-3 sm:px-4 sm:py-3 flex items-center justify-between border-t border-white/5">
-                <div className="flex items-center gap-3 overflow-hidden">
-                    {/* Play State Icon */}
-                    <div className={`${stateColor(session.state)} shrink-0`}>
-                        {session.state === 'paused' ? (
-                            <svg className="h-4 w-4 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
-                        ) : (
-                            <svg className="h-4 w-4 drop-shadow-md" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                        )}
-                    </div>
-
-                    <div className="flex flex-col overflow-hidden">
-                        <span className="text-xs sm:text-sm font-bold text-white truncate leading-tight pointer-events-none group-hover:text-amber-400 transition-colors">
-                            {session.title}
-                        </span>
-                        <div className="flex items-center gap-2 text-[10px] text-white/50 font-medium whitespace-nowrap">
-                            {isTV ? <span className="truncate">{session.subtitle}</span> : <span>{session.year}</span>}
-                            <span className="opacity-30">•</span>
-                            <SessionElapsedTime viewOffset={session.viewOffset} duration={session.duration} state={session.state} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* User Avatar */}
-                <div className="pl-2 shrink-0">
+                <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="truncate text-base font-bold leading-tight text-white group-hover:text-amber-400 transition-colors">
+                        {session.title}
+                    </span>
+                    <span className="truncate text-[11px] font-medium text-white/50">
+                        {isTV ? session.subtitle : session.year}
+                    </span>
                     <Link
                         href={`/settings/users/${encodeURIComponent(session.user)}?from=dashboard`}
-                        className="group/user relative flex items-center justify-center"
+                        className="mt-1 flex min-w-0 items-center gap-2 self-start rounded-full pr-2 hover:bg-white/5 transition-colors"
                     >
-                        {/* Avatar Image (Hidden on Hover) */}
-                        <div className="h-8 w-8 rounded-full ring-2 ring-white/10 overflow-hidden group-hover/user:ring-white/0 group-hover/user:scale-0 group-hover/user:opacity-0 transition-all duration-300 shadow-lg shrink-0">
-                            <img
-                                src={avatarSrc(session.userThumb, session.user)}
-                                alt={session.user}
-                                loading="lazy"
-                                className="h-full w-full object-cover"
-                            />
-                        </div>
-
-                        {/* Username (Shown on Hover) */}
-                        <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-end opacity-0 scale-50 group-hover/user:opacity-100 group-hover/user:scale-100 origin-right transition-all duration-300 z-50">
-                            <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-1 rounded-lg whitespace-nowrap shadow-[0_0_15px_rgba(245,158,11,0.2)] bg-slate-900/80">
-                                {session.user}
-                            </span>
-                        </div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={avatarSrc(session.userThumb, session.user)}
+                            alt=""
+                            loading="lazy"
+                            className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-2 ring-white/10"
+                        />
+                        <span className="truncate text-xs text-white/60">{session.user}</span>
                     </Link>
                 </div>
             </div>
+
+            {/* Progress */}
+            <div className="flex flex-col gap-1.5 px-3 pb-2.5">
+                <SessionProgressBar
+                    viewOffset={session.viewOffset}
+                    duration={session.duration}
+                    state={session.state}
+                    color={barColor}
+                    className="relative h-1 rounded-full"
+                />
+                <div className="flex items-center gap-1.5 text-[11px] text-white/50">
+                    <span className={`${stateColor(session.state)} shrink-0`}>
+                        {session.state === "paused" ? (
+                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
+                        ) : (
+                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        )}
+                    </span>
+                    <SessionElapsedTime viewOffset={session.viewOffset} duration={session.duration} state={session.state} />
+                </div>
             </div>
+
+            <SessionDetailGrid session={session} />
         </div>
     );
 };
