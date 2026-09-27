@@ -170,3 +170,33 @@ body::before {
   mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
+
+/* OverflowMarquee: a clipped value fades out on the right at rest, and glides
+   to its end and back while its card is hovered (pointer devices) or
+   tap-revealed (data-reveal, touch). Only transform animates, and only then. */
+@keyframes marquee-peek {
+  0%, 15% { transform: translateX(0); }
+  45%, 65% { transform: translateX(var(--marquee-shift)); }
+  95%, 100% { transform: translateX(0); }
+}
+
+.marquee[data-overflow="true"] {
+  mask-image: linear-gradient(to right, black 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+}
+
+.group[data-reveal="true"] .marquee[data-overflow="true"] { mask-image: none; -webkit-mask-image: none; }
+.group[data-reveal="true"] .marquee[data-overflow="true"] .marquee-track {
+  animation: marquee-peek var(--marquee-duration) ease-in-out infinite;
+}
+
+@media (hover: hover) {
+  .group:hover .marquee[data-overflow="true"] { mask-image: none; -webkit-mask-image: none; }
+  .group:hover .marquee[data-overflow="true"] .marquee-track {
+    animation: marquee-peek var(--marquee-duration) ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee .marquee-track { animation: none !important; }
+}

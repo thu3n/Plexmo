@@ -7,7 +7,7 @@ import Link from "next/link";
 import { getPlayerIcon } from "@/features/history/components/HistoryHelpers";
 import { stateColor } from "../utils/sessionUtils";
 import { SessionElapsedTime, SessionProgressBar } from "./SessionProgress";
-import { SessionDetailGrid } from "./SessionDetailGrid";
+import { SessionDetailRows } from "./SessionDetailRows";
 import { useSessionActions } from "../hooks/useSessionActions";
 
 const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: PlexSession; serverColor?: string; isLimitExceeded?: boolean }) => {
@@ -18,6 +18,16 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
 
     // Stop Stream State
     const [showStopConfirm, setShowStopConfirm] = useState(false);
+
+    // Touch has no hover: a tap toggles the same reveal (overflow marquees,
+    // stop button) that hovering gives on desktop.
+    const [revealed, setRevealed] = useState(false);
+
+    const handleCardTap = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!window.matchMedia("(hover: none)").matches) return;
+        if ((event.target as HTMLElement).closest("a,button")) return;
+        setRevealed((prev) => !prev);
+    };
 
     const handleStopClick = async () => {
         const idToUse = session.sessionId || session.sessionKey;
@@ -32,6 +42,8 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
 
     return (
         <div
+            onClick={handleCardTap}
+            data-reveal={revealed}
             className={`group glass-panel rounded-2xl overflow-hidden flex flex-col h-full transform transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-black/50 relative ${isLimitExceeded ? "ring-2 ring-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.3)]" : ""}`}
         >
 
@@ -82,7 +94,7 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
                     e.stopPropagation();
                     setShowStopConfirm(true);
                 }}
-                className="absolute top-2 right-2 z-40 bg-black/60 hover:bg-rose-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 backdrop-blur-sm shadow-xl translate-y-2 group-hover:translate-y-0"
+                className="absolute top-2 right-2 z-40 bg-black/60 hover:bg-rose-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 group-data-[reveal=true]:opacity-100 transition-all duration-300 backdrop-blur-sm shadow-xl translate-y-2 group-hover:translate-y-0 group-data-[reveal=true]:translate-y-0"
                 title="Stop Stream"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -90,79 +102,70 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
                 </svg>
             </button>
 
-            {/* Poster band: the poster doubles as a dimmed backdrop (plain opacity,
-                no blur — stacked filters were the iOS WebKit lag driver) and sits
-                whole on top, so it is never cropped regardless of card width */}
-            <div className="relative flex items-end gap-3.5 p-3.5 min-h-[168px] overflow-hidden">
-                {posterSrc && (
-                    <div className="absolute inset-0 opacity-40" aria-hidden="true">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={posterSrc} alt="" className="h-full w-full object-cover scale-110" />
-                    </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 to-slate-950/85" aria-hidden="true" />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent to-70%" aria-hidden="true" />
-
-                <div className="relative z-10 w-[92px] aspect-[2/3] shrink-0 overflow-hidden rounded-xl bg-slate-900 shadow-[0_10px_24px_rgba(0,0,0,0.6)] ring-1 ring-white/10">
+            {/* Poster + details side by side. The poster column is exactly 2:3 of
+                the row height, so object-cover never has anything to crop */}
+            <div className="flex h-[246px] w-full">
+                <div className="relative w-[164px] shrink-0 overflow-hidden border-r border-white/5 bg-slate-900">
                     {posterSrc ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={posterSrc} alt={session.title} className="h-full w-full object-cover" />
+                        <img src={posterSrc} alt={session.title} className="h-full w-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
                     ) : (
                         <div className="flex h-full w-full items-center justify-center">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src="/images/Plexmo_icon.png" alt="No Poster" className="h-10 w-10 object-contain opacity-20 grayscale" />
+                            <img src="/images/Plexmo_icon.png" alt="No Poster" className="h-16 w-16 object-contain opacity-20 grayscale" />
                         </div>
                     )}
-                    <div className="absolute top-1.5 left-1.5">
-                        {session.player && getPlayerIcon(session.player, session.platform, "w-5 h-5 rounded-md shadow-lg")}
+                    <div className="absolute top-2 left-2 shadow-lg" title={session.player}>
+                        {session.player && getPlayerIcon(session.player, session.platform, "w-6 h-6 rounded-md shadow-lg")}
                     </div>
                 </div>
 
-                <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="truncate text-base font-bold leading-tight text-white group-hover:text-amber-400 transition-colors">
-                        {session.title}
-                    </span>
-                    <span className="truncate text-[11px] font-medium text-white/50">
-                        {isTV ? session.subtitle : session.year}
-                    </span>
-                    <Link
-                        href={`/settings/users/${encodeURIComponent(session.user)}?from=dashboard`}
-                        className="mt-1 flex min-w-0 items-center gap-2 self-start rounded-full pr-2 hover:bg-white/5 transition-colors"
-                    >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={avatarSrc(session.userThumb, session.user)}
-                            alt=""
-                            loading="lazy"
-                            className="h-[22px] w-[22px] shrink-0 rounded-full object-cover ring-2 ring-white/10"
-                        />
-                        <span className="truncate text-xs text-white/60">{session.user}</span>
-                    </Link>
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 overflow-hidden bg-gradient-to-b from-white/5 to-transparent px-3 py-2.5">
+                    <div className="flex flex-col gap-0.5 border-b border-white/5 pb-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-bold leading-tight text-white group-hover:text-amber-400 transition-colors">
+                                {session.title}
+                            </span>
+                            <Link
+                                href={`/settings/users/${encodeURIComponent(session.user)}?from=dashboard`}
+                                title={session.user}
+                                className="shrink-0 rounded-full ring-2 ring-white/10 hover:ring-amber-400/60 transition-shadow"
+                            >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={avatarSrc(session.userThumb, session.user)}
+                                    alt={session.user}
+                                    loading="lazy"
+                                    className="h-6 w-6 rounded-full object-cover"
+                                />
+                            </Link>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-white/50">
+                            <span className="truncate">{isTV ? session.subtitle : session.year} · {session.user}</span>
+                            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+                                <span className={stateColor(session.state)}>
+                                    {session.state === "paused" ? (
+                                        <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
+                                    ) : (
+                                        <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                    )}
+                                </span>
+                                <SessionElapsedTime viewOffset={session.viewOffset} duration={session.duration} state={session.state} />
+                            </span>
+                        </div>
+                    </div>
+
+                    <SessionDetailRows session={session} />
                 </div>
             </div>
 
-            {/* Progress */}
-            <div className="flex flex-col gap-1.5 px-3 pb-2.5">
-                <SessionProgressBar
-                    viewOffset={session.viewOffset}
-                    duration={session.duration}
-                    state={session.state}
-                    color={barColor}
-                    className="relative h-1 rounded-full"
-                />
-                <div className="flex items-center gap-1.5 text-[11px] text-white/50">
-                    <span className={`${stateColor(session.state)} shrink-0`}>
-                        {session.state === "paused" ? (
-                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
-                        ) : (
-                            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                        )}
-                    </span>
-                    <SessionElapsedTime viewOffset={session.viewOffset} duration={session.duration} state={session.state} />
-                </div>
-            </div>
-
-            <SessionDetailGrid session={session} />
+            <SessionProgressBar
+                viewOffset={session.viewOffset}
+                duration={session.duration}
+                state={session.state}
+                color={barColor}
+                className="relative h-1"
+            />
         </div>
     );
 };
