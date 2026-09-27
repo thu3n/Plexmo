@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PlexSession } from "@/lib/plex";
 import { useLanguage } from "@/components/LanguageContext";
 import {
@@ -25,12 +25,21 @@ const TranscodeChain = ({ isDirect, original, originalText, current }: { isDirec
     );
 };
 
-const Row = ({ label, children }: { label: string; children: ReactNode }) => (
-    <div className="flex min-h-[18px] items-center gap-2">
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-white/30">{label}</span>
-        <OverflowMarquee>{children}</OverflowMarquee>
-    </div>
-);
+const Row = ({ label, children }: { label: string; children: ReactNode }) => {
+    // Touch has no hover: tapping a row plays its marquee instead. The tap
+    // still bubbles to the card, which uses it to reveal the stop button.
+    const [active, setActive] = useState(false);
+    const handleTap = () => {
+        if (window.matchMedia("(hover: none)").matches) setActive((prev) => !prev);
+    };
+
+    return (
+        <div onClick={handleTap} data-active={active} className="marquee-row flex min-h-[18px] items-center gap-2">
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-white/30">{label}</span>
+            <OverflowMarquee>{children}</OverflowMarquee>
+        </div>
+    );
+};
 
 export const SessionDetailRows = ({ session }: { session: PlexSession }) => {
     const { t } = useLanguage();

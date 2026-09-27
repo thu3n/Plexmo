@@ -171,13 +171,14 @@ body::before {
   -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
 
-/* OverflowMarquee: a clipped value fades out on the right at rest, and glides
-   to its end and back while its card is hovered (pointer devices) or
-   tap-revealed (data-reveal, touch). Only transform animates, and only then. */
+/* OverflowMarquee: a clipped value fades out on the right at rest, and slides
+   to its end and back like a sign while its own row is hovered (pointer
+   devices) or tapped (data-active, touch). Only transform animates, on the
+   compositor, and only for that one row. */
 @keyframes marquee-peek {
-  0%, 15% { transform: translateX(0); }
-  45%, 65% { transform: translateX(var(--marquee-shift)); }
-  95%, 100% { transform: translateX(0); }
+  0%, 18% { transform: translate3d(0, 0, 0); }
+  48%, 70% { transform: translate3d(var(--marquee-shift), 0, 0); }
+  100% { transform: translate3d(0, 0, 0); }
 }
 
 .marquee[data-overflow="true"] {
@@ -185,15 +186,17 @@ body::before {
   -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
 }
 
-.group[data-reveal="true"] .marquee[data-overflow="true"] { mask-image: none; -webkit-mask-image: none; }
-.group[data-reveal="true"] .marquee[data-overflow="true"] .marquee-track {
-  animation: marquee-peek var(--marquee-duration) ease-in-out infinite;
+.marquee-row[data-active="true"] .marquee[data-overflow="true"] { mask-image: none; -webkit-mask-image: none; }
+.marquee-row[data-active="true"] .marquee[data-overflow="true"] .marquee-track {
+  will-change: transform;
+  animation: marquee-peek var(--marquee-duration) cubic-bezier(0.37, 0, 0.63, 1) infinite;
 }
 
 @media (hover: hover) {
-  .group:hover .marquee[data-overflow="true"] { mask-image: none; -webkit-mask-image: none; }
-  .group:hover .marquee[data-overflow="true"] .marquee-track {
-    animation: marquee-peek var(--marquee-duration) ease-in-out infinite;
+  .marquee-row:hover .marquee[data-overflow="true"] { mask-image: none; -webkit-mask-image: none; }
+  .marquee-row:hover .marquee[data-overflow="true"] .marquee-track {
+    will-change: transform;
+    animation: marquee-peek var(--marquee-duration) cubic-bezier(0.37, 0, 0.63, 1) infinite;
   }
 }
 

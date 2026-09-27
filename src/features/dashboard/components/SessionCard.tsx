@@ -19,8 +19,8 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
     // Stop Stream State
     const [showStopConfirm, setShowStopConfirm] = useState(false);
 
-    // Touch has no hover: a tap toggles the same reveal (overflow marquees,
-    // stop button) that hovering gives on desktop.
+    // Touch has no hover: a tap toggles the reveal hover gives on desktop
+    // (the stop button). Row marquees handle their own taps.
     const [revealed, setRevealed] = useState(false);
 
     const handleCardTap = (event: React.MouseEvent<HTMLDivElement>) => {

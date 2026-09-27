@@ -2,14 +2,16 @@
 
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
-// Glide speed for the peek animation; the pauses at each end are baked into
-// the keyframes, so short overflows still get time to be read.
-const MARQUEE_PX_PER_SECOND = 30;
-const MARQUEE_MIN_DURATION_MS = 3000;
+// Sign-board pace: slow enough to read while it moves. The keyframes spend
+// ~30% of each cycle actually sliding (each way) and pause at both ends, so
+// the cycle is scaled up from the pure travel time.
+const MARQUEE_PX_PER_SECOND = 22;
+const MARQUEE_TRAVEL_SHARE = 0.3;
+const MARQUEE_MIN_DURATION_MS = 4500;
 
 /**
- * Right-aligned value that, when clipped, glides to its end and back while the
- * surrounding card (`.group`) is hovered or tap-revealed. Overflow is measured
+ * Right-aligned value that, when clipped, slides to its end and back while its
+ * row (`.marquee-row`) is hovered or tapped. Overflow is measured
  * with a ResizeObserver and written straight to the DOM (data attribute + CSS
  * vars) so a resize never re-renders the memoized card.
  */
@@ -25,7 +27,7 @@ export const OverflowMarquee = ({ children }: { children: ReactNode }) => {
         const measure = () => {
             const overflow = track.scrollWidth - outer.clientWidth;
             if (overflow > 0) {
-                const duration = Math.max(MARQUEE_MIN_DURATION_MS, (overflow / MARQUEE_PX_PER_SECOND) * 1000 * 2);
+                const duration = Math.max(MARQUEE_MIN_DURATION_MS, (overflow / MARQUEE_PX_PER_SECOND) * 1000 / MARQUEE_TRAVEL_SHARE);
                 outer.dataset.overflow = "true";
                 // Full text on long-press/hover for reduced-motion users who get no glide
                 outer.title = track.textContent ?? "";
