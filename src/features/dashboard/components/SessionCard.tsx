@@ -105,8 +105,8 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
 
             {/* Poster + details side by side. The poster column is exactly 2:3 of
                 the row height, so object-cover never has anything to crop */}
-            <div className="flex h-[246px] w-full">
-                <div className="relative w-[164px] shrink-0 overflow-hidden border-r border-white/5 bg-slate-900">
+            <div className="flex h-[252px] w-full">
+                <div className="relative w-[168px] shrink-0 overflow-hidden border-r border-white/5 bg-slate-900">
                     {posterSrc ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={posterSrc} alt={session.title} className="h-full w-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
@@ -121,7 +121,7 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
                     </div>
                 </div>
 
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5 overflow-hidden bg-gradient-to-b from-white/5 to-transparent px-3 py-2.5">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 overflow-hidden bg-gradient-to-b from-white/5 to-transparent px-3 pt-2.5 pb-3.5">
                     <div className="flex flex-col gap-0.5 border-b border-white/5 pb-2">
                         <div className="flex items-center justify-between gap-2">
                             <span className="truncate text-sm font-bold leading-tight text-white group-hover:text-amber-400 transition-colors">
