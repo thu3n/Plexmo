@@ -58,34 +58,32 @@ export function StatisticsV2Layout() {
 
                     <KpiRow {...scope} periodLabel={periodLabel} />
 
-                    <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
-                        <div className="min-w-0 space-y-3">
-                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-                                <PlaysOverTimePanel {...scope} />
-                                <StreamDecisionPanel {...scope} />
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))]">
-                                <div className="space-y-3">
-                                    <ActivityHeatmap {...scope} />
-                                    <StreamQualityPanel {...scope} />
-                                </div>
-                                <div className="space-y-3">
-                                    <TopMediaPanel type="movie" {...scope} />
-                                    <TranscodingDetailsPanel {...scope} />
-                                </div>
-                                <div className="space-y-3">
-                                    <TopMediaPanel type="show" {...scope} />
-                                    <DevicesPanel {...scope} />
-                                </div>
-                                <TopMediaPanel type="episode" {...scope} />
-                            </div>
+                    {/* 12-column grid, full width per row: every list gets enough room for
+                        its labels, and rows share one height so no column leaves a hole. */}
+                    <div className="mt-4 grid gap-4 xl:grid-cols-12">
+                        <div className="flex min-w-0 flex-col gap-4 xl:col-span-8 [&>section:first-child]:flex-1">
+                            <PlaysOverTimePanel {...scope} />
+                            <ActivityHeatmap {...scope} />
+                        </div>
+                        <div className="flex min-w-0 flex-col gap-4 md:grid md:grid-cols-2 xl:col-span-4 xl:flex [&>section]:flex-1">
+                            <StreamDecisionPanel {...scope} />
+                            <StreamQualityPanel {...scope} />
+                            <div className="md:col-span-2 [&>section]:h-full"><TranscodingDetailsPanel {...scope} /></div>
                         </div>
 
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1 xl:content-start">
-                            <ServersPanel {...scope} />
+                    <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12 xl:grid-cols-3">
+                            <TopMediaPanel type="movie" {...scope} />
+                            <TopMediaPanel type="show" {...scope} />
+                            <div className="md:col-span-2 xl:col-span-1 [&>section]:h-full"><TopMediaPanel type="episode" {...scope} /></div>
+                        </div>
+
+                        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12 xl:grid-cols-3">
                             <TopUsersPanel {...scope} />
                             <TopPlatformsPanel {...scope} />
+                            <div className="md:col-span-2 xl:col-span-1 [&>section]:h-full"><DevicesPanel {...scope} /></div>
                         </div>
+
+                        <div className="min-w-0 xl:col-span-12"><ServersPanel {...scope} /></div>
                     </div>
                 </div>
             </main>

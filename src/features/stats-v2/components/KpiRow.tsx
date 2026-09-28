@@ -22,18 +22,21 @@ type Kpi = {
 function KpiCard({ kpi, periodLabel }: { kpi: Kpi; periodLabel: string }) {
     const Icon = kpi.icon;
     return (
-        <div className={`${PANEL_CLASS} flex items-start gap-3 p-3.5`} title={kpi.title}>
+        <div className={`${PANEL_CLASS} flex items-start gap-3 p-4`} title={kpi.title}>
             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${kpi.iconBg}`}>
                 <Icon className="h-4 w-4 text-white" />
             </span>
             <div className="min-w-0 flex-1">
                 <p className="text-[13px] text-white/80">{kpi.label}</p>
-                <div className="flex items-end justify-between gap-2">
-                    <p className="text-[22px] font-semibold leading-tight text-white">{kpi.value}</p>
-                    {kpi.spark && kpi.spark.length > 1 && <Sparkline values={kpi.spark} />}
+                <div className="flex min-w-0 items-end justify-between gap-2">
+                    <p className="truncate text-xl font-semibold leading-tight tabular-nums text-white sm:text-2xl">{kpi.value}</p>
+                    {/* Two cards per row on phones leave no room for both value and trend line. */}
+                    {kpi.spark && kpi.spark.length > 1 && (
+                        <span className="hidden sm:block"><Sparkline values={kpi.spark} /></span>
+                    )}
                 </div>
                 {kpi.trend !== undefined && kpi.trend !== null && (
-                    <p className="mt-1 flex items-center gap-1 text-[10px] text-white/55">
+                    <p className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-white/55">
                         <span className={kpi.trend >= 0 ? "flex items-center text-emerald-400" : "flex items-center text-rose-400"}>
                             {kpi.trend >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
                             {Math.abs(kpi.trend)}%

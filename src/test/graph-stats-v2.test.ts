@@ -62,7 +62,7 @@ describe("statistics v2 graph types", () => {
         expect(rows).toEqual([
             { bucket: "video", total: 1, detail: "HEVC → H264" },
             { bucket: "audio", total: 1, detail: "TRUEHD → AAC" },
-            { bucket: "resolution", total: 2, detail: "4K → 1080" },
+            { bucket: "resolution", total: 2, detail: "4k → 1080" },
         ]);
     });
 

@@ -27,6 +27,12 @@ export const formatHours = (seconds: number): string =>
 export const percentOf = (part: number, total: number): number =>
     total > 0 ? Math.round((part / total) * 100) : 0;
 
+/** "37%", or "<1%" for a real but tiny share (a plain "0%" reads as none at all). */
+export const formatShare = (part: number, total: number): string => {
+    const percent = percentOf(part, total);
+    return percent === 0 && part > 0 ? "<1%" : `${percent}%`;
+};
+
 /**
  * Change of the current window vs. the one before it, derived from a total over
  * the doubled window (previous = doubled − current). Only valid for additive
@@ -71,10 +77,68 @@ export const formatBucketLabel = (bucket: string): string => {
         : date.toLocaleDateString("en-US", MONTH_FMT);
 };
 
-/** "4K → 1080" → "4K → 1080p": bare heights get the conventional "p" suffix. */
+const formatResolution = (value: string): string => {
+    const v = value.trim();
+    if (/^\d{3,4}p?$/i.test(v)) return `${v.replace(/p$/i, "")}p`;
+    return v.toUpperCase();
+};
+
+/** "4k → 1080" → "4K → 1080p", "1080p → sd" → "1080p → SD". */
 export const formatResolutionChange = (detail: string): string =>
-    detail.replace(/\b(\d{3,4})(?![\dp])/g, "$1p");
+    detail.split("→").map(formatResolution).join(" → ");
+
+/**
+ * Quantile thresholds over the non-zero cells, so a few extreme evening cells
+ * can't flatten every other cell into one shade (the linear-alpha problem).
+ * Returns ascending upper bounds, one per non-empty level.
+ */
+export const quantileThresholds = (values: number[], levels: number): number[] => {
+    const sorted = values.filter((v) => v > 0).sort((a, b) => a - b);
+    if (sorted.length === 0) return [];
+    return Array.from({ length: levels }, (_, i) =>
+        sorted[Math.min(sorted.length - 1, Math.floor(((i + 1) / levels) * sorted.length) - 1)] ?? sorted[0],
+    );
+};
+
+/** 0 = empty cell, 1..levels by quantile bucket. */
+export const levelFor = (value: number, thresholds: number[]): number => {
+    if (value <= 0 || thresholds.length === 0) return 0;
+    const idx = thresholds.findIndex((t) => value <= t);
+    return idx === -1 ? thresholds.length : idx + 1;
+};
 
 /** One-decimal hours — short windows would otherwise flatten to 0h on the chart. */
 export const secondsToChartHours = (seconds: number): number =>
     Math.round((seconds / SECONDS_PER_HOUR) * 10) / 10;
+
+const NAMED_RESOLUTIONS: Record<string, number> = { "8k": 4320, "4k": 2160, sd: 480 };
+
+/** Sortable height for a resolution label ("4k", "1080", "720p", "sd"); unknown → 0. */
+export const resolutionRank = (value: string): number => {
+    const v = value.trim().toLowerCase();
+    if (v in NAMED_RESOLUTIONS) return NAMED_RESOLUTIONS[v];
+    const n = Number.parseInt(v, 10);
+    return Number.isFinite(n) ? n : 0;
+};
+
+/** Lower height bounds per quality class, best first; anything below the last is SD. */
+const RESOLUTION_CLASSES: { label: string; min: number }[] = [
+    { label: "4K", min: 1500 },
+    { label: "1080p", min: 900 },
+    { label: "720p", min: 600 },
+];
+
+/**
+ * Collapse raw delivered heights (Plex reports e.g. 1072 or 804 for cropped or
+ * scaled streams) into the four classes people think in. Unknown rows drop out.
+ */
+export const groupResolutions = (rows: { bucket: string; total: number }[]): { label: string; total: number }[] => {
+    const totals = new Map<string, number>([...RESOLUTION_CLASSES.map((c) => [c.label, 0] as const), ["SD", 0]]);
+    for (const row of rows) {
+        const height = resolutionRank(row.bucket);
+        if (height === 0) continue;
+        const label = RESOLUTION_CLASSES.find((c) => height >= c.min)?.label ?? "SD";
+        totals.set(label, (totals.get(label) ?? 0) + row.total);
+    }
+    return [...totals].filter(([, total]) => total > 0).map(([label, total]) => ({ label, total }));
+};

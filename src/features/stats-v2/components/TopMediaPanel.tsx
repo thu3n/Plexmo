@@ -1,67 +1,61 @@
 "use client";
 
 import { useState } from "react";
-import clsx from "clsx";
-import { SkeletonRows } from "@/components/Skeleton";
 import { useTopMediaBoth, type MediaTypeKey, type TopMediaItem, type TopMediaSort } from "@/features/stats/hooks/useOverviewData";
 import { buildThumbUrl, POSTER_THUMB_HEIGHT, POSTER_THUMB_WIDTH } from "@/features/stats/lib/top-media-list";
-import { EXPANDED_LIMIT, EmptyRow, ExpandToggle, Panel, Tabs, type TabOption } from "./Panel";
+import { DEFAULT_LIST_LIMIT, EXPANDED_LIMIT, ExpandToggle, Panel, Tabs, type TabOption } from "./Panel";
+import { RankedList, type RankedRow } from "./RankedList";
+import { formatCount } from "../lib/overview-math";
 
 const SORTS: TabOption<TopMediaSort>[] = [
     { key: "users", label: "Popular" },
     { key: "plays", label: "Most Watched" },
 ];
 
-const CONFIG: Record<MediaTypeKey, { title: string; anchor: string; limit: number }> = {
-    movie: { title: "Top movies", anchor: "movies", limit: 5 },
-    show: { title: "Top shows", anchor: "shows", limit: 10 },
-    episode: { title: "Top episodes", anchor: "episodes", limit: 10 },
+const CONFIG: Record<MediaTypeKey, { title: string; anchor: string }> = {
+    movie: { title: "Top movies", anchor: "movies" },
+    show: { title: "Top shows", anchor: "shows" },
+    episode: { title: "Top episodes", anchor: "episodes" },
 };
 
 const THUMB_SIZE = { w: POSTER_THUMB_WIDTH, h: POSTER_THUMB_HEIGHT };
 
-function Row({ item, rank, type, sort }: { item: TopMediaItem; rank: number; type: MediaTypeKey; sort: TopMediaSort }) {
-    const count = sort === "users" ? item.uniqueUsers : item.plays;
-    const countLabel = `${count} ${sort === "users" ? "users" : "plays"}`;
+function Poster({ item }: { item: TopMediaItem }) {
     const src = buildThumbUrl(item.thumb, THUMB_SIZE);
-    const isMovie = type === "movie";
-    const title = type === "episode" ? (item.showTitle ?? item.title) : item.title;
-    const sub =
-        type === "episode"
-            ? `S${item.seasonNumber ?? "?"}E${item.episodeNumber ?? "?"} · ${item.title}`
-            : type === "show"
-              ? countLabel
-              : item.year ? String(item.year) : "";
-
-    return (
-        <li className={clsx("flex items-center gap-3", isMovie ? "py-1.5" : "py-[3px]")}>
-            <span className="w-4 shrink-0 text-center text-[11px] text-white/80">{rank}</span>
-            {src ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                    src={src}
-                    alt=""
-                    className={clsx("shrink-0 rounded-sm bg-slate-800 object-cover", isMovie ? "h-[46px] w-[32px]" : "h-[26px] w-[22px]")}
-                />
-            ) : (
-                <div className={clsx("shrink-0 rounded-sm bg-white/5", isMovie ? "h-[46px] w-[32px]" : "h-[26px] w-[22px]")} />
-            )}
-            <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] text-white">{title}</p>
-                <p className={clsx("truncate text-white/60", isMovie ? "mt-2 text-[10px]" : "text-[8px]")}>{sub}</p>
-            </div>
-            {type !== "show" && (
-                <span className={clsx("shrink-0 text-[9px] text-white/80", isMovie && "self-end")}>{countLabel}</span>
-            )}
-        </li>
+    // NEVER loading="lazy" — the same rule as v1's list thumbs (hidden variants must preload).
+    return src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-12 w-8 shrink-0 rounded bg-slate-800 object-cover" />
+    ) : (
+        <div className="h-12 w-8 shrink-0 rounded bg-white/5" />
     );
 }
+
+/** The sub line carries the OTHER metric, so both are visible without toggling. */
+const toRow = (item: TopMediaItem, type: MediaTypeKey, sort: TopMediaSort): RankedRow => {
+    const value = sort === "users" ? item.uniqueUsers : item.plays;
+    const other = sort === "users" ? `${formatCount(item.plays)} plays` : `${formatCount(item.uniqueUsers)} users`;
+    const lead =
+        type === "episode"
+            ? `S${item.seasonNumber ?? "?"}E${item.episodeNumber ?? "?"} · ${item.title}`
+            : type === "movie" && item.year
+              ? String(item.year)
+              : null;
+    return {
+        key: item.mediaId,
+        label: type === "episode" ? (item.showTitle ?? item.title) : item.title,
+        sub: lead ? `${lead} · ${other}` : other,
+        icon: <Poster item={item} />,
+        values: [formatCount(value)],
+        magnitude: value,
+    };
+};
 
 export function TopMediaPanel({ type, days, serverId }: { type: MediaTypeKey; days: number; serverId: string | null }) {
     const [sort, setSort] = useState<TopMediaSort>("users");
     const [expanded, setExpanded] = useState(false);
     const config = CONFIG[type];
-    const limit = expanded ? EXPANDED_LIMIT : config.limit;
+    const limit = expanded ? EXPANDED_LIMIT : DEFAULT_LIST_LIMIT;
     const { data } = useTopMediaBoth(type, days, serverId, limit);
     const items = sort === "users" ? data?.byUsers : data?.byPlays;
 
@@ -72,16 +66,14 @@ export function TopMediaPanel({ type, days, serverId }: { type: MediaTypeKey; da
             action={<Tabs options={SORTS} value={sort} onChange={setSort} size="sm" />}
             className="flex flex-col"
         >
-            {!items ? (
-                <SkeletonRows count={limit} rowClassName="h-7 rounded" />
-            ) : items.length === 0 ? (
-                <EmptyRow />
-            ) : (
-                <ol className="flex-1 space-y-1">
-                    {items.map((item, i) => <Row key={item.mediaId} item={item} rank={i + 1} type={type} sort={sort} />)}
-                </ol>
-            )}
-            <div className="mt-2 text-right">
+            <div className="flex-1">
+                <RankedList
+                    rows={items?.map((item) => toRow(item, type, sort))}
+                    unit={sort === "users" ? "users" : "plays"}
+                    skeletonRows={limit}
+                />
+            </div>
+            <div className="mt-3 text-right">
                 <ExpandToggle expanded={expanded} onToggle={() => setExpanded((e) => !e)} />
             </div>
         </Panel>

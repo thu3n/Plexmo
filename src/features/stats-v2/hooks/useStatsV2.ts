@@ -59,6 +59,12 @@ export function useDecisionShare(days: number, serverId: string | null) {
     return (data?.data ?? []) as { bucket: string; total: number }[];
 }
 
+/** Streams per delivered resolution (stream_video_resolution), largest first. */
+export function useResolutionShare(days: number, serverId: string | null) {
+    const { data } = useGraphData("plays_by_resolution", days, serverId);
+    return data?.data as { bucket: string; total: number }[] | undefined;
+}
+
 export function useHeatmapRows(days: number, serverId: string | null) {
     const { data } = useGraphData("plays_by_dow_hour", days, serverId);
     return data?.data as SeriesRow[] | undefined;

@@ -1,10 +1,10 @@
 "use client";
 
 import { Panel } from "./Panel";
-import { formatCount, percentOf } from "../lib/overview-math";
+import { formatCount, formatShare, percentOf } from "../lib/overview-math";
 import { useDecisionShare } from "../hooks/useStatsV2";
 
-export const DECISIONS = [
+const DECISIONS = [
     { bucket: "direct play", label: "Direct Play", color: "#22c55e" },
     { bucket: "transcode", label: "Transcode", color: "#8b5cf6" },
     { bucket: "direct stream", label: "Direct Stream", color: "#60a5fa" },
@@ -32,9 +32,9 @@ export function StreamDecisionPanel({ days, serverId }: { days: number; serverId
     }));
 
     return (
-        <Panel title="Stream decision" className="h-full">
-            <div className="flex flex-col items-center gap-6 py-3 sm:flex-row sm:justify-around">
-                <div className="relative h-[140px] w-[140px] shrink-0">
+        <Panel title="Stream decision" className="flex flex-col">
+            <div className="flex flex-1 flex-col items-center justify-center gap-6 py-2 sm:flex-row sm:justify-around">
+                <div className="relative h-[150px] w-[150px] shrink-0">
                     <svg viewBox="0 0 140 140" className="-rotate-90">
                         <circle cx={70} cy={70} r={RADIUS} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={STROKE} />
                         {arcs.map((arc) =>
@@ -54,18 +54,21 @@ export function StreamDecisionPanel({ days, serverId }: { days: number; serverId
                         )}
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-2xl font-semibold text-white">{rows[0].percent}%</span>
-                        <span className="text-[11px] text-white/80">Direct Play</span>
+                        <span className="text-[28px] font-semibold leading-none text-white">{rows[0].percent}%</span>
+                        <span className="mt-1 text-xs text-white/70">Direct Play</span>
                     </div>
                 </div>
-                <ul className="w-full max-w-[220px] space-y-6">
+                <ul className="w-full max-w-[260px] space-y-4">
                     {rows.map((row) => (
-                        <li key={row.bucket} className="flex items-center justify-between gap-3 text-[11px] text-white">
-                            <span className="flex items-center gap-2">
+                        <li key={row.bucket} className="flex items-center justify-between gap-3">
+                            <span className="flex items-center gap-2.5 text-[13px] text-white">
                                 <span className="h-3 w-3 rounded-full" style={{ backgroundColor: row.color }} />
                                 {row.label}
                             </span>
-                            <span>{formatCount(row.count)} ({row.percent}%)</span>
+                            <span className="text-right tabular-nums">
+                                <span className="block text-[13px] font-semibold text-white">{formatShare(row.count, total)}</span>
+                                <span className="block text-[11px] text-white/55">{formatCount(row.count)}</span>
+                            </span>
                         </li>
                     ))}
                 </ul>

@@ -22,10 +22,10 @@ export function Panel({
     children: ReactNode;
 }) {
     return (
-        <section id={id} className={clsx(PANEL_CLASS, "scroll-mt-24 p-4", className)}>
+        <section id={id} className={clsx(PANEL_CLASS, "scroll-mt-24 p-5", className)}>
             {(title || action) && (
-                <div className="mb-3 flex items-center justify-between gap-2">
-                    {title && <h2 className="text-[15px] font-semibold text-white">{title}</h2>}
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    {title && <h2 className="whitespace-nowrap text-base font-semibold text-white">{title}</h2>}
                     {action}
                 </div>
             )}
@@ -38,7 +38,7 @@ export function ViewAll({ href, label = "View all" }: { href: string; label?: st
     return (
         <Link
             href={href}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#5b8cff] hover:text-[#8aaeff]"
+            className="inline-flex items-center gap-1 text-xs font-medium text-[#5b8cff] hover:text-[#8aaeff]"
         >
             {label}
             <ArrowRight className="h-3 w-3" />
@@ -53,7 +53,7 @@ export function ExpandToggle({ expanded, onToggle }: { expanded: boolean; onTogg
             type="button"
             onClick={onToggle}
             aria-expanded={expanded}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#5b8cff] hover:text-[#8aaeff]"
+            className="inline-flex items-center gap-1 text-xs font-medium text-[#5b8cff] hover:text-[#8aaeff]"
         >
             {expanded ? "Show less" : "View all"}
             <ArrowRight className={clsx("h-3 w-3 transition-transform", expanded && "-rotate-90")} />
@@ -65,7 +65,7 @@ export function ExpandToggle({ expanded, onToggle }: { expanded: boolean; onTogg
 export const DEFAULT_LIST_LIMIT = 10;
 export const EXPANDED_LIMIT = 25;
 
-export type TabOption<T extends string> = { key: T; label: string; disabled?: boolean };
+export type TabOption<T extends string> = { key: T; label: string };
 
 /** The small segmented control used in panel headers (Plays / Watch time / …). */
 export function Tabs<T extends string>({
@@ -80,21 +80,18 @@ export function Tabs<T extends string>({
     size?: "sm" | "md";
 }) {
     return (
-        <div className="flex items-center gap-0.5 rounded-lg border border-[#1b2742] bg-[#0b1222] p-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[#1b2742] bg-[#0b1222] p-0.5">
             {options.map((opt) => (
                 <button
                     key={opt.key}
                     type="button"
-                    disabled={opt.disabled}
-                    title={opt.disabled ? "Not available yet" : undefined}
                     onClick={() => onChange(opt.key)}
                     className={clsx(
-                        "rounded-md font-medium transition-colors",
-                        size === "sm" ? "px-2 py-1 text-[10px]" : "px-3 py-1.5 text-xs",
+                        "whitespace-nowrap rounded-md font-medium transition-colors",
+                        size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
                         opt.key === value
                             ? "bg-[#1f4fd1] text-white"
                             : "text-white/60 hover:text-white",
-                        opt.disabled && "cursor-not-allowed opacity-40 hover:text-white/60",
                     )}
                 >
                     {opt.label}
@@ -105,5 +102,5 @@ export function Tabs<T extends string>({
 }
 
 export function EmptyRow({ text = "No data for this period" }: { text?: string }) {
-    return <p className="py-6 text-center text-xs text-white/40">{text}</p>;
+    return <p className="py-6 text-center text-sm text-white/40">{text}</p>;
 }

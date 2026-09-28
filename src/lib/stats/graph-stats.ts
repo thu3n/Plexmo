@@ -172,7 +172,7 @@ export const getGraphData = (type: GraphType, params: GraphParams) => {
         WHERE ${where}
       `).get(...args) as { video: number | null; audio: number | null; resolution: number | null };
       const topResolution = db.prepare(`
-        SELECT upper(h.video_resolution) || ' → ' || upper(h.stream_video_resolution) as detail, COUNT(*) as total
+        SELECT h.video_resolution || ' → ' || h.stream_video_resolution as detail, COUNT(*) as total
         FROM activity_history h
         WHERE ${where}
           AND h.stream_video_resolution IS NOT NULL AND h.video_resolution IS NOT NULL

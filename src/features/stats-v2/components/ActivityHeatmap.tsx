@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { Skeleton } from "@/components/Skeleton";
 import { Panel, Tabs, type TabOption } from "./Panel";
-import { HEATMAP_WEEKDAYS, buildHeatmapGrid, formatHours } from "../lib/overview-math";
+import {
+    HEATMAP_HOURS,
+    HEATMAP_WEEKDAYS,
+    buildHeatmapGrid,
+    formatCount,
+    formatHours,
+    levelFor,
+    quantileThresholds,
+} from "../lib/overview-math";
 import { useHeatmapRows, type SeriesRow } from "../hooks/useStatsV2";
 
 type Metric = "plays" | "watch" | "users";
@@ -21,53 +29,75 @@ const METRIC_VALUE: Record<Metric, (row: SeriesRow) => number> = {
 };
 
 const formatCell: Record<Metric, (v: number) => string> = {
-    plays: (v) => `${v} plays`,
-    watch: (v) => formatHours(v),
-    users: (v) => `${v} users`,
+    plays: (v) => `${formatCount(v)} plays`,
+    watch: (v) => `${formatHours(v)} watched`,
+    users: (v) => `${formatCount(v)} users`,
 };
 
-const HOUR_TICKS = ["00", "04", "08", "12", "16", "20", "24"];
+/**
+ * One-hue sequential blue ramp (dataviz reference palette, steps 600→100),
+ * validated on the #0f1729 panel surface: monotone lightness, visible gaps,
+ * darkest step still clears 2:1. Index 0 = empty cell.
+ */
+const RAMP = ["#16223b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"];
+const LEVELS = RAMP.length - 1;
+const HOUR_LABEL_EVERY = 3;
 
-/** Navy → bright blue ramp, one hue, intensity by share of the busiest cell. */
-const cellColor = (value: number, max: number) => {
-    if (max === 0 || value === 0) return "rgba(59,130,246,0.08)";
-    const t = value / max;
-    return `rgba(59,130,246,${(0.15 + t * 0.85).toFixed(2)})`;
-};
+type Hover = { day: number; hour: number; value: number } | null;
 
 export function ActivityHeatmap({ days, serverId }: { days: number; serverId: string | null }) {
     const [metric, setMetric] = useState<Metric>("plays");
+    const [hover, setHover] = useState<Hover>(null);
     const rows = useHeatmapRows(days, serverId);
     const grid = rows
         ? buildHeatmapGrid(rows.map((r) => ({ bucket: r.bucket, total: METRIC_VALUE[metric](r) })))
         : null;
-    const max = grid ? Math.max(...grid.flat()) : 0;
+    const thresholds = grid ? quantileThresholds(grid.flat(), LEVELS) : [];
 
     return (
         <Panel id="activity" title="Activity heatmap" action={<Tabs options={METRICS} value={metric} onChange={setMetric} size="sm" />}>
             {!grid ? (
-                <Skeleton className="h-[180px] rounded-lg" />
+                <Skeleton className="h-[200px] rounded-lg" />
             ) : (
-                <div className="flex gap-2">
-                    <div className="flex flex-col justify-around pb-5 text-[9px] text-white/80">
-                        {HEATMAP_WEEKDAYS.map((d) => <span key={d.key}>{d.label}</span>)}
+                <div onMouseLeave={() => setHover(null)}>
+                    <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-2 gap-y-[3px]">
+                        {grid.map((row, di) => (
+                            <div key={HEATMAP_WEEKDAYS[di].key} className="contents">
+                                <span className="self-center text-xs text-white/70">{HEATMAP_WEEKDAYS[di].label}</span>
+                                <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[3px]">
+                                    {row.map((value, hour) => (
+                                        <div
+                                            key={hour}
+                                            onMouseEnter={() => setHover({ day: di, hour, value })}
+                                            title={`${HEATMAP_WEEKDAYS[di].label} ${String(hour).padStart(2, "0")}:00 · ${formatCell[metric](value)}`}
+                                            className="h-[22px] rounded-[3px] transition-[outline] hover:outline hover:outline-2 hover:outline-white/70"
+                                            style={{ backgroundColor: RAMP[levelFor(value, thresholds)] }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        <span />
+                        <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] pt-1 text-[11px] text-white/60">
+                            {Array.from({ length: HEATMAP_HOURS }, (_, h) => (
+                                <span key={h}>{h % HOUR_LABEL_EVERY === 0 ? String(h).padStart(2, "0") : ""}</span>
+                            ))}
+                        </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                        <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px]">
-                            {grid.map((row, ri) =>
-                                row.map((value, hour) => (
-                                    <div
-                                        key={`${ri}-${hour}`}
-                                        title={`${HEATMAP_WEEKDAYS[ri].label} ${String(hour).padStart(2, "0")}:00 · ${formatCell[metric](value)}`}
-                                        className="aspect-square rounded-[1px]"
-                                        style={{ backgroundColor: cellColor(value, max) }}
-                                    />
-                                )),
-                            )}
-                        </div>
-                        <div className="mt-2 flex justify-between text-[9px] text-white/80">
-                            {HOUR_TICKS.map((h) => <span key={h}>{h}</span>)}
-                        </div>
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-white/70">
+                        <span className="min-h-[1rem]">
+                            {hover
+                                ? `${HEATMAP_WEEKDAYS[hover.day].label} ${String(hover.hour).padStart(2, "0")}:00–${String(hover.hour + 1).padStart(2, "0")}:00 · ${formatCell[metric](hover.value)}`
+                                : "Hover a cell for details"}
+                        </span>
+                        <span className="flex items-center gap-1.5" aria-label="Color scale: less to more">
+                            Less
+                            {RAMP.slice(1).map((color) => (
+                                <span key={color} className="h-3 w-3 rounded-[3px]" style={{ backgroundColor: color }} />
+                            ))}
+                            More
+                        </span>
                     </div>
                 </div>
             )}
