@@ -31,6 +31,8 @@ const PLAY_COUNT = `COUNT(DISTINCT h.userId || ':' ||
 export type HomeStatsParams = {
   /** Window start, epoch ms. */
   since: number;
+  /** Exclusive window end, epoch ms (default: now) — previous-period comparisons. */
+  until?: number;
   /** Explicit server filter (already scope-checked by the route). */
   serverId?: string;
   /** Authorization scope: when set, only these servers' rows are counted. */
@@ -50,9 +52,14 @@ const ORDER_SQL: Record<TopMediaOrder, string> = {
   uniqueUsers: "uniqueUsers DESC, plays DESC",
 };
 
-export const buildFilter = ({ since, serverId, allowedServerIds, userId }: HomeStatsParams) => {
+export const buildFilter = ({ since, until, serverId, allowedServerIds, userId }: HomeStatsParams) => {
   const conditions: string[] = ["h.startTime >= ?"];
   const args: (string | number)[] = [since];
+
+  if (until !== undefined) {
+    conditions.push("h.startTime < ?");
+    args.push(until);
+  }
 
   if (allowedServerIds && allowedServerIds.length > 0) {
     conditions.push(`h.serverId IN (${allowedServerIds.map(() => "?").join(",")})`);

@@ -56,12 +56,17 @@ export type OverviewSummaryWithPeaks = OverviewSummary & {
         window: ReturnType<typeof getWindowPeak>;
         allTime: ReturnType<typeof getAllTimePeak>;
     };
+    /** The equally long window right before this one; absent for all-time. */
+    previous?: Omit<OverviewSummary, "playsByType"> & { peak: number };
 };
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** The full summary-route payload — shared by the route and the cron prewarm. */
 export const getOverviewSummaryWithPeaks = (
     params: OverviewSummaryParams,
     days: number,
+    options: { previous?: boolean } = {},
 ): OverviewSummaryWithPeaks => {
     const summary = getOverviewSummary(params);
     const peakScope = { serverId: params.serverId, allowedServerIds: params.allowedServerIds };
@@ -69,5 +74,16 @@ export const getOverviewSummaryWithPeaks = (
     // A 7300d window over retention-pruned snapshots would silently lie —
     // "all time" answers from the persistent peak record instead.
     const window = days >= SUMMARY_MAX_DAYS ? allTime : getWindowPeak(peakScope, params.since);
-    return { days, ...summary, peak: { window, allTime } };
+    const result: OverviewSummaryWithPeaks = { days, ...summary, peak: { window, allTime } };
+    if (options.previous && days < SUMMARY_MAX_DAYS) {
+        const since = params.since - days * MS_PER_DAY;
+        const prev = getOverviewSummary({ ...params, since, until: params.since });
+        result.previous = {
+            totalPlays: prev.totalPlays,
+            totalSeconds: prev.totalSeconds,
+            uniqueUsers: prev.uniqueUsers,
+            peak: getWindowPeak(peakScope, since, params.since).count,
+        };
+    }
+    return result;
 };

@@ -52,7 +52,7 @@ export async function prewarmStatsCacheIfDue(): Promise<void> {
     const params = { since, serverId: undefined, allowedServerIds: undefined };
 
     setCachedStats(
-        buildStatsKey("summary", { days: PREWARM_DAYS, server: "all", scope: GLOBAL_SCOPE }),
+        buildStatsKey("summary", { days: PREWARM_DAYS, server: "all", previous: 0, scope: GLOBAL_SCOPE }),
         getOverviewSummaryWithPeaks(params, PREWARM_DAYS),
     );
     await yieldToEventLoop();
@@ -63,9 +63,10 @@ export async function prewarmStatsCacheIfDue(): Promise<void> {
             server: "all",
             user: undefined,
             media: 0,
+            limit: PREWARM_LIMIT,
             scope: GLOBAL_SCOPE,
         }),
-        getHomeStatsLight(params),
+        getHomeStatsLight({ ...params, limit: PREWARM_LIMIT }),
     );
     await yieldToEventLoop();
 

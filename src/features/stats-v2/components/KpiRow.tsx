@@ -2,10 +2,11 @@
 
 import { ArrowDown, ArrowUp, Clock, Play, Shuffle, User, Users, type LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/Skeleton";
+import { formatPeakTimestamp } from "@/features/stats/lib/format";
 import { PANEL_CLASS } from "./Panel";
 import { Sparkline } from "./Sparkline";
 import { formatCount, formatHours, percentOf, trendPercent } from "../lib/overview-math";
-import { useDecisionShare, useKpiData, usePlaysSeries } from "../hooks/useStatsV2";
+import { useActivitySeries, useConcurrentSeries, useDecisionShare, useSummary } from "../hooks/useStatsV2";
 
 type Kpi = {
     label: string;
@@ -15,12 +16,13 @@ type Kpi = {
     trend?: number | null;
     spark?: number[];
     bar?: { percent: number; color: string };
+    title?: string;
 };
 
 function KpiCard({ kpi, periodLabel }: { kpi: Kpi; periodLabel: string }) {
     const Icon = kpi.icon;
     return (
-        <div className={`${PANEL_CLASS} flex items-start gap-3 p-3.5`}>
+        <div className={`${PANEL_CLASS} flex items-start gap-3 p-3.5`} title={kpi.title}>
             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${kpi.iconBg}`}>
                 <Icon className="h-4 w-4 text-white" />
             </span>
@@ -49,12 +51,17 @@ function KpiCard({ kpi, periodLabel }: { kpi: Kpi; periodLabel: string }) {
     );
 }
 
+/** % change vs. the previous window; null when there is nothing to compare against. */
+const change = (current: number, previous: number | undefined): number | null =>
+    previous === undefined ? null : trendPercent(current, current + previous);
+
 export function KpiRow({ days, serverId, periodLabel }: { days: number; serverId: string | null; periodLabel: string }) {
-    const { current, doubled } = useKpiData(days, serverId);
-    const series = usePlaysSeries(days, serverId);
+    const summary = useSummary(days, serverId);
+    const series = useActivitySeries(days, serverId);
+    const concurrent = useConcurrentSeries(days, serverId);
     const share = useDecisionShare(days, serverId);
 
-    if (!current) {
+    if (!summary) {
         return (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-xl" />)}
@@ -62,27 +69,45 @@ export function KpiRow({ days, serverId, periodLabel }: { days: number; serverId
         );
     }
 
+    const prev = summary.previous;
     const shareTotal = share.reduce((sum, r) => sum + r.total, 0);
     const shareOf = (bucket: string) => percentOf(share.find((r) => r.bucket === bucket)?.total ?? 0, shareTotal);
+    const peakAt = formatPeakTimestamp(summary.peak.window.timestamp);
 
     const kpis: Kpi[] = [
         {
             label: "Plays",
-            value: formatCount(current.totalPlays),
+            value: formatCount(summary.totalPlays),
             icon: Play,
             iconBg: "bg-[#2f6fec]",
-            trend: doubled ? trendPercent(current.totalPlays, doubled.totalPlays) : null,
+            trend: change(summary.totalPlays, prev?.totalPlays),
             spark: series?.map((r) => r.total),
         },
         {
             label: "Watch time",
-            value: formatHours(current.totalSeconds),
+            value: formatHours(summary.totalSeconds),
             icon: Clock,
             iconBg: "bg-[#138a5e]",
-            trend: doubled ? trendPercent(current.totalSeconds, doubled.totalSeconds) : null,
+            trend: change(summary.totalSeconds, prev?.totalSeconds),
+            spark: series?.map((r) => r.seconds),
         },
-        { label: "Users", value: formatCount(current.uniqueUsers), icon: User, iconBg: "bg-[#3a5bbf]" },
-        { label: "Peak concurrent", value: formatCount(current.peak.window.count), icon: Users, iconBg: "bg-[#3b4a6b]" },
+        {
+            label: "Users",
+            value: formatCount(summary.uniqueUsers),
+            icon: User,
+            iconBg: "bg-[#3a5bbf]",
+            trend: change(summary.uniqueUsers, prev?.uniqueUsers),
+            spark: series?.map((r) => r.users),
+        },
+        {
+            label: "Peak concurrent",
+            value: formatCount(summary.peak.window.count),
+            icon: Users,
+            iconBg: "bg-[#3b4a6b]",
+            trend: change(summary.peak.window.count, prev?.peak),
+            spark: concurrent?.map((r) => r.total),
+            title: peakAt ? `Peak reached ${peakAt}` : undefined,
+        },
         {
             label: "Direct play",
             value: `${shareOf("direct play")}%`,

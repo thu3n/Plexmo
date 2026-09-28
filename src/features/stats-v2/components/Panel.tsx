@@ -46,6 +46,25 @@ export function ViewAll({ href, label = "View all" }: { href: string; label?: st
     );
 }
 
+/** In-place "View all" for ranked lists: expands to the API's max instead of navigating away. */
+export function ExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-[#5b8cff] hover:text-[#8aaeff]"
+        >
+            {expanded ? "Show less" : "View all"}
+            <ArrowRight className={clsx("h-3 w-3 transition-transform", expanded && "-rotate-90")} />
+        </button>
+    );
+}
+
+/** Ranked-list row counts: the design's default, and the API maximum when expanded. */
+export const DEFAULT_LIST_LIMIT = 10;
+export const EXPANDED_LIMIT = 25;
+
 export type TabOption<T extends string> = { key: T; label: string; disabled?: boolean };
 
 /** The small segmented control used in panel headers (Plays / Watch time / …). */

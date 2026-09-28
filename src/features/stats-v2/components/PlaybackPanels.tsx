@@ -4,7 +4,7 @@ import { AudioLines, Film, Maximize } from "lucide-react";
 import { SkeletonRows } from "@/components/Skeleton";
 import { Panel, ViewAll } from "./Panel";
 import { DECISIONS } from "./StreamDecisionPanel";
-import { formatCount, percentOf } from "../lib/overview-math";
+import { formatCount, formatResolutionChange, percentOf } from "../lib/overview-math";
 import { useDecisionShare, useTranscodeDetails, type TranscodeDetailRow } from "../hooks/useStatsV2";
 
 type Scope = { days: number; serverId: string | null };
@@ -73,7 +73,7 @@ export function TranscodingDetailsPanel({ days, serverId }: Scope) {
                                     <meta.icon className="mt-0.5 h-3.5 w-3.5 text-[#5b8cff]" />
                                     <div>
                                         <p className="text-[11px] text-white">{meta.label}</p>
-                                        <p className="text-[10px] text-white/70">{row.detail ?? "Transcoded streams"}</p>
+                                        <p className="text-[10px] text-white/70">{row.detail ? (row.bucket === "resolution" ? formatResolutionChange(row.detail) : row.detail) : "Transcoded streams"}</p>
                                     </div>
                                 </div>
                                 <span className="text-[11px] tabular-nums text-white">{formatCount(row.total)}</span>

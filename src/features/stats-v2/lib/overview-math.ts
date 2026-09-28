@@ -70,3 +70,11 @@ export const formatBucketLabel = (bucket: string): string => {
         ? date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
         : date.toLocaleDateString("en-US", MONTH_FMT);
 };
+
+/** "4K → 1080" → "4K → 1080p": bare heights get the conventional "p" suffix. */
+export const formatResolutionChange = (detail: string): string =>
+    detail.replace(/\b(\d{3,4})(?![\dp])/g, "$1p");
+
+/** One-decimal hours — short windows would otherwise flatten to 0h on the chart. */
+export const secondsToChartHours = (seconds: number): number =>
+    Math.round((seconds / SECONDS_PER_HOUR) * 10) / 10;

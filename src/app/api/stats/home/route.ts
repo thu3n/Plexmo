@@ -19,6 +19,8 @@ const MAX_DAYS = 7300;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 // accountIds are plex.tv ids or synthetic `legacy:<name>` — never longer than this.
 const MAX_USER_ID_LENGTH = 64;
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 25;
 
 export async function GET(request: Request) {
     const user = await authorizeApiKeyOrSession(request);
@@ -33,6 +35,7 @@ export async function GET(request: Request) {
     const userId = userParam && userParam.length <= MAX_USER_ID_LENGTH ? userParam : undefined;
     // media=0 skips the movie/show aggregations for consumers that discard them.
     const includeMedia = searchParams.get("media") !== "0";
+    const limit = Math.min(MAX_LIMIT, Math.max(1, Number(searchParams.get("limit")) || DEFAULT_LIMIT));
 
     if (serverId && serverId !== "all" && !canAccessServer(user.scope, serverId)) {
         return NextResponse.json({ error: "Forbidden: server outside your scope" }, { status: 403 });
@@ -45,6 +48,7 @@ export async function GET(request: Request) {
             server: serverId ?? "all",
             user: userId,
             media: includeMedia ? 1 : 0,
+            limit,
             scope: statsScopeKey(allowedServerIds),
         });
         const stats = getCachedStats(key, STATS_CACHE_TTL_MS, () => {
@@ -53,6 +57,7 @@ export async function GET(request: Request) {
                 serverId,
                 allowedServerIds,
                 userId,
+                limit,
             };
             return includeMedia ? getHomeStats(params) : getHomeStatsLight(params);
         });

@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     const days = Math.min(SUMMARY_MAX_DAYS, Math.max(1, Number(searchParams.get("days")) || DEFAULT_DAYS));
     const serverIdParam = searchParams.get("serverId") ?? undefined;
     const serverId = serverIdParam && serverIdParam !== "all" ? serverIdParam : undefined;
+    const previous = searchParams.get("previous") === "1";
 
     if (serverId && !canAccessServer(user.scope, serverId)) {
         return NextResponse.json({ error: "Forbidden: server outside your scope" }, { status: 403 });
@@ -35,12 +36,14 @@ export async function GET(request: Request) {
         const key = buildStatsKey("summary", {
             days,
             server: serverId ?? "all",
+            previous: previous ? 1 : 0,
             scope: statsScopeKey(allowedServerIds),
         });
         const data = getCachedStats(key, STATS_CACHE_TTL_MS, () =>
             getOverviewSummaryWithPeaks(
                 { since: Date.now() - days * ONE_DAY_MS, serverId, allowedServerIds },
                 days,
+                { previous },
             ),
         );
         return NextResponse.json(data);

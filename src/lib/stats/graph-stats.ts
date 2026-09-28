@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { getConcurrentSeries } from "./concurrent";
 
 /**
  * Time-series and breakdown data for the statistics graphs, computed straight
@@ -18,6 +19,8 @@ export const GRAPH_TYPES = [
   "plays_by_dow_hour",
   "plays_by_device",
   "transcode_details",
+  "concurrent_by_day",
+  "concurrent_by_month",
 ] as const;
 
 export type GraphType = (typeof GRAPH_TYPES)[number];
@@ -54,7 +57,9 @@ const DECISION_SPLIT = `
   SUM(CASE WHEN h.transcode_decision = 'direct stream' THEN 1 ELSE 0 END) as directStream,
   SUM(CASE WHEN h.transcode_decision = 'direct play' THEN 1 ELSE 0 END) as directPlay,
   SUM(CASE WHEN h.transcode_decision IS NULL THEN 1 ELSE 0 END) as unknown,
-  COUNT(*) as total
+  COUNT(*) as total,
+  COALESCE(SUM(COALESCE(h.play_duration, h.duration)), 0) as seconds,
+  COUNT(DISTINCT h.userId) as users
 `;
 
 const bucketQuery = (bucketExpr: string, params: GraphParams) => {
@@ -128,13 +133,34 @@ export const getGraphData = (type: GraphType, params: GraphParams) => {
         WHERE ${where} AND h.device IS NOT NULL AND h.device != ''
         GROUP BY h.device
         ORDER BY total DESC
-        LIMIT 10
+        LIMIT 25
       `).all(...args);
     }
+    case "concurrent_by_day":
+    case "concurrent_by_month": {
+      const scope = {
+        serverId: params.serverId && params.serverId !== "all" ? params.serverId : undefined,
+        allowedServerIds: params.allowedServerIds,
+      };
+      return getConcurrentSeries(scope, params.since, type === "concurrent_by_day" ? "day" : "month");
+    }
     case "transcode_details": {
-      // Per-stream-component transcode counts; codecs aren't fact columns, so the
-      // only "from → to" detail we can report honestly is the resolution change.
+      // Per-stream-component transcode counts plus the most common "from → to"
+      // change. Codecs aren't fact columns: live sessions store
+      // originalVideoCodec, Tautulli imports videoCodec — read either.
       const { where, args } = buildFilter(params);
+      const topCodec = (kind: "Video" | "Audio") => db.prepare(`
+        SELECT upper(COALESCE(json_extract(h.meta_json, '$.original${kind}Codec'),
+                              json_extract(h.meta_json, '$.${kind.toLowerCase()}Codec')))
+               || ' → ' || upper(json_extract(h.meta_json, '$.transcode${kind}Codec')) as detail,
+               COUNT(*) as total
+        FROM activity_history h
+        WHERE ${where} AND h.${kind.toLowerCase()}_decision = 'transcode'
+        GROUP BY detail
+        HAVING detail IS NOT NULL
+        ORDER BY total DESC
+        LIMIT 1
+      `).get(...args) as { detail: string } | undefined;
       const counts = db.prepare(`
         SELECT
           SUM(CASE WHEN h.video_decision = 'transcode' THEN 1 ELSE 0 END) as video,
@@ -146,7 +172,7 @@ export const getGraphData = (type: GraphType, params: GraphParams) => {
         WHERE ${where}
       `).get(...args) as { video: number | null; audio: number | null; resolution: number | null };
       const topResolution = db.prepare(`
-        SELECT h.video_resolution || ' → ' || h.stream_video_resolution as detail, COUNT(*) as total
+        SELECT upper(h.video_resolution) || ' → ' || upper(h.stream_video_resolution) as detail, COUNT(*) as total
         FROM activity_history h
         WHERE ${where}
           AND h.stream_video_resolution IS NOT NULL AND h.video_resolution IS NOT NULL
@@ -156,8 +182,8 @@ export const getGraphData = (type: GraphType, params: GraphParams) => {
         LIMIT 1
       `).get(...args) as { detail: string } | undefined;
       return [
-        { bucket: "video", total: counts.video ?? 0, detail: null },
-        { bucket: "audio", total: counts.audio ?? 0, detail: null },
+        { bucket: "video", total: counts.video ?? 0, detail: topCodec("Video")?.detail ?? null },
+        { bucket: "audio", total: counts.audio ?? 0, detail: topCodec("Audio")?.detail ?? null },
         { bucket: "resolution", total: counts.resolution ?? 0, detail: topResolution?.detail ?? null },
       ];
     }

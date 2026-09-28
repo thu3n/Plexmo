@@ -1,33 +1,57 @@
 import useSWR from "swr";
 import type { PublicServer } from "@/lib/servers";
-import { fetchJson, useGraphData, useHomeStats } from "@/features/stats/hooks/useStatsData";
-import { useOverviewSummary } from "@/features/stats/hooks/useOverviewData";
+import type { ServerHealthResponse } from "@/lib/server-health";
+import type { ServerResources } from "@/lib/server-resources";
+import { useAuthMe } from "@/lib/use-auth-me";
+import { fetchJson, useGraphData, type HomeStatsResponse } from "@/features/stats/hooks/useStatsData";
+import type { OverviewSummaryResponse } from "@/features/stats/hooks/useOverviewData";
 import { ALL_TIME_DAYS } from "@/features/stats/lib/stats-periods";
 
-/** Above a year of data, daily buckets are noise — the area chart goes monthly. */
+/** Above a year of data, daily buckets are noise — series go monthly. */
 const MONTHLY_THRESHOLD_DAYS = 365;
+/** Server load changes by the second; a slow poll keeps the card honest without hammering Plex. */
+const RESOURCES_REFRESH_MS = 30_000;
 
 const SWR_OPTS = { revalidateOnFocus: false, keepPreviousData: true };
 
+export type SeriesRow = { bucket: string; total: number; seconds: number; users: number };
 export type DeviceRow = { bucket: string; total: number; duration: number };
 export type TranscodeDetailRow = {
     bucket: "video" | "audio" | "resolution";
     total: number;
     detail: string | null;
 };
+export type SummaryWithPrevious = OverviewSummaryResponse & {
+    previous?: { totalPlays: number; totalSeconds: number; uniqueUsers: number; peak: number };
+};
 
-/** Current window + the doubled window, whose difference is the previous period. */
-export function useKpiData(days: number, serverId: string | null) {
-    const current = useOverviewSummary(days, serverId);
-    const hasPrevious = days < ALL_TIME_DAYS;
-    const doubled = useOverviewSummary(hasPrevious ? Math.min(days * 2, ALL_TIME_DAYS) : days, serverId);
-    return { current: current.data, doubled: hasPrevious ? doubled.data : undefined };
+const query = (pairs: Record<string, string | number | null | undefined>) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(pairs)) {
+        if (value !== null && value !== undefined) params.set(key, String(value));
+    }
+    return params.toString();
+};
+
+const isMonthly = (days: number) => days > MONTHLY_THRESHOLD_DAYS;
+
+export const useSummary = (days: number, serverId: string | null) =>
+    useSWR<SummaryWithPrevious>(
+        `/api/stats/overview/summary?${query({ days, serverId, previous: days < ALL_TIME_DAYS ? 1 : null })}`,
+        fetchJson,
+        SWR_OPTS,
+    ).data;
+
+/** Plays / watch seconds / distinct users per day (or month beyond a year). */
+export function useActivitySeries(days: number, serverId: string | null) {
+    const { data } = useGraphData(isMonthly(days) ? "plays_by_month" : "plays_by_day", days, serverId);
+    return data?.data as SeriesRow[] | undefined;
 }
 
-export function usePlaysSeries(days: number, serverId: string | null) {
-    const monthly = days > MONTHLY_THRESHOLD_DAYS;
-    const { data } = useGraphData(monthly ? "plays_by_month" : "plays_by_day", days, serverId);
-    return data?.data;
+/** Peak concurrent streams per bucket — same granularity as the activity series. */
+export function useConcurrentSeries(days: number, serverId: string | null) {
+    const { data } = useGraphData(isMonthly(days) ? "concurrent_by_month" : "concurrent_by_day", days, serverId);
+    return data?.data as { bucket: string; total: number }[] | undefined;
 }
 
 export function useDecisionShare(days: number, serverId: string | null) {
@@ -37,7 +61,7 @@ export function useDecisionShare(days: number, serverId: string | null) {
 
 export function useHeatmapRows(days: number, serverId: string | null) {
     const { data } = useGraphData("plays_by_dow_hour", days, serverId);
-    return data?.data;
+    return data?.data as SeriesRow[] | undefined;
 }
 
 export function useDevices(days: number, serverId: string | null) {
@@ -50,8 +74,22 @@ export function useTranscodeDetails(days: number, serverId: string | null) {
     return data?.data as TranscodeDetailRow[] | undefined;
 }
 
-export const useHomeLight = (days: number, serverId: string | null) =>
-    useHomeStats(days, serverId, undefined, { media: false }).data;
+export const useHomeLight = (days: number, serverId: string | null, limit?: number) =>
+    useSWR<HomeStatsResponse>(`/api/stats/home?${query({ days, serverId, media: 0, limit })}`, fetchJson, SWR_OPTS)
+        .data;
 
 export const useServers = () =>
     useSWR<{ servers: PublicServer[] }>("/api/servers", fetchJson, SWR_OPTS).data?.servers ?? [];
+
+/** Live health + CPU/RAM; both routes are owner-only, so viewers skip the requests. */
+export function useServerLive() {
+    const { user } = useAuthMe();
+    const isOwner = user?.role === "owner";
+    const health = useSWR<ServerHealthResponse>(isOwner ? "/api/servers/status" : null, fetchJson, SWR_OPTS).data;
+    const resources = useSWR<{ servers: ServerResources[] }>(
+        isOwner ? "/api/servers/resources" : null,
+        fetchJson,
+        { ...SWR_OPTS, refreshInterval: RESOURCES_REFRESH_MS },
+    ).data;
+    return { health: health?.servers, resources: resources?.servers };
+}

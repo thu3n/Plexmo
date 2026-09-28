@@ -30,13 +30,16 @@ export default function UserStatsPage({ params }: { params: Promise<{ username: 
     const [period, setPeriod] = useState<PeriodKey>(DEFAULT_PERIOD);
     const days = daysForPeriod(period);
 
-    // Back target: dashboard cards link with ?from=dashboard, rules with
-    // ?returnTo=rules; everything else (incl. legacy returnTo=servers) goes
-    // to the user directory.
+    // Back target: dashboard cards link with ?from=dashboard, statistics with
+    // ?from=statistics, rules with ?returnTo=rules; everything else (incl.
+    // legacy returnTo=servers) goes to the user directory.
     const returnTo = searchParams.get("returnTo");
-    const backLink = searchParams.get("from") === "dashboard"
+    const from = searchParams.get("from");
+    const backLink = from === "dashboard"
         ? "/"
-        : returnTo === "rules"
+        : from === "statistics"
+            ? "/statistics/v2"
+            : returnTo === "rules"
             ? "/settings/rules"
             : "/settings/users";
 

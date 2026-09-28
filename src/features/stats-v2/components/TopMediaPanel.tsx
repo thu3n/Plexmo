@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { SkeletonRows } from "@/components/Skeleton";
 import { useTopMediaBoth, type MediaTypeKey, type TopMediaItem, type TopMediaSort } from "@/features/stats/hooks/useOverviewData";
 import { buildThumbUrl, POSTER_THUMB_HEIGHT, POSTER_THUMB_WIDTH } from "@/features/stats/lib/top-media-list";
-import { EmptyRow, Panel, Tabs, ViewAll, type TabOption } from "./Panel";
+import { EXPANDED_LIMIT, EmptyRow, ExpandToggle, Panel, Tabs, type TabOption } from "./Panel";
 
 const SORTS: TabOption<TopMediaSort>[] = [
     { key: "users", label: "Popular" },
@@ -59,8 +59,10 @@ function Row({ item, rank, type, sort }: { item: TopMediaItem; rank: number; typ
 
 export function TopMediaPanel({ type, days, serverId }: { type: MediaTypeKey; days: number; serverId: string | null }) {
     const [sort, setSort] = useState<TopMediaSort>("users");
+    const [expanded, setExpanded] = useState(false);
     const config = CONFIG[type];
-    const { data } = useTopMediaBoth(type, days, serverId, config.limit);
+    const limit = expanded ? EXPANDED_LIMIT : config.limit;
+    const { data } = useTopMediaBoth(type, days, serverId, limit);
     const items = sort === "users" ? data?.byUsers : data?.byPlays;
 
     return (
@@ -71,7 +73,7 @@ export function TopMediaPanel({ type, days, serverId }: { type: MediaTypeKey; da
             className="flex flex-col"
         >
             {!items ? (
-                <SkeletonRows count={config.limit} rowClassName="h-7 rounded" />
+                <SkeletonRows count={limit} rowClassName="h-7 rounded" />
             ) : items.length === 0 ? (
                 <EmptyRow />
             ) : (
@@ -79,7 +81,9 @@ export function TopMediaPanel({ type, days, serverId }: { type: MediaTypeKey; da
                     {items.map((item, i) => <Row key={item.mediaId} item={item} rank={i + 1} type={type} sort={sort} />)}
                 </ol>
             )}
-            <div className="mt-2 text-right"><ViewAll href="/libraries" /></div>
+            <div className="mt-2 text-right">
+                <ExpandToggle expanded={expanded} onToggle={() => setExpanded((e) => !e)} />
+            </div>
         </Panel>
     );
 }

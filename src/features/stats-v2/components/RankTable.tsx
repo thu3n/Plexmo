@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { SkeletonRows } from "@/components/Skeleton";
 import { EmptyRow } from "./Panel";
 
-export type RankRow = { key: string; icon?: ReactNode; label: string; cells: string[] };
+export type RankRow = { key: string; icon?: ReactNode; label: string; href?: string; cells: string[] };
 
 /** Rank · label · numeric columns — the users / platforms / devices tables. */
 export function RankTable({
@@ -39,7 +40,11 @@ export function RankTable({
                         <td className="max-w-0 py-[3px]">
                             <span className="flex items-center gap-2">
                                 {row.icon}
-                                <span className="truncate">{row.label}</span>
+                                {row.href ? (
+                                    <Link href={row.href} className="truncate hover:text-[#8aaeff]">{row.label}</Link>
+                                ) : (
+                                    <span className="truncate">{row.label}</span>
+                                )}
                             </span>
                         </td>
                         {row.cells.map((cell, ci) => (

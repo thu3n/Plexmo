@@ -3,16 +3,28 @@
 import { useState } from "react";
 import { Skeleton } from "@/components/Skeleton";
 import { Panel, Tabs, type TabOption } from "./Panel";
-import { HEATMAP_WEEKDAYS, buildHeatmapGrid } from "../lib/overview-math";
-import { useHeatmapRows } from "../hooks/useStatsV2";
+import { HEATMAP_WEEKDAYS, buildHeatmapGrid, formatHours } from "../lib/overview-math";
+import { useHeatmapRows, type SeriesRow } from "../hooks/useStatsV2";
 
 type Metric = "plays" | "watch" | "users";
 
 const METRICS: TabOption<Metric>[] = [
     { key: "plays", label: "Plays" },
-    { key: "watch", label: "Watch time", disabled: true },
-    { key: "users", label: "Users", disabled: true },
+    { key: "watch", label: "Watch time" },
+    { key: "users", label: "Users" },
 ];
+
+const METRIC_VALUE: Record<Metric, (row: SeriesRow) => number> = {
+    plays: (r) => r.total,
+    watch: (r) => r.seconds,
+    users: (r) => r.users,
+};
+
+const formatCell: Record<Metric, (v: number) => string> = {
+    plays: (v) => `${v} plays`,
+    watch: (v) => formatHours(v),
+    users: (v) => `${v} users`,
+};
 
 const HOUR_TICKS = ["00", "04", "08", "12", "16", "20", "24"];
 
@@ -26,7 +38,9 @@ const cellColor = (value: number, max: number) => {
 export function ActivityHeatmap({ days, serverId }: { days: number; serverId: string | null }) {
     const [metric, setMetric] = useState<Metric>("plays");
     const rows = useHeatmapRows(days, serverId);
-    const grid = rows ? buildHeatmapGrid(rows) : null;
+    const grid = rows
+        ? buildHeatmapGrid(rows.map((r) => ({ bucket: r.bucket, total: METRIC_VALUE[metric](r) })))
+        : null;
     const max = grid ? Math.max(...grid.flat()) : 0;
 
     return (
@@ -44,7 +58,7 @@ export function ActivityHeatmap({ days, serverId }: { days: number; serverId: st
                                 row.map((value, hour) => (
                                     <div
                                         key={`${ri}-${hour}`}
-                                        title={`${HEATMAP_WEEKDAYS[ri].label} ${String(hour).padStart(2, "0")}:00 · ${value} plays`}
+                                        title={`${HEATMAP_WEEKDAYS[ri].label} ${String(hour).padStart(2, "0")}:00 · ${formatCell[metric](value)}`}
                                         className="aspect-square rounded-[1px]"
                                         style={{ backgroundColor: cellColor(value, max) }}
                                     />

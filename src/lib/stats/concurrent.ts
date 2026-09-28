@@ -100,14 +100,14 @@ const snapshotScopeSql = (scope: PeakScope): { sql: string; args: string[] } => 
     return { sql: "serverId IS NULL", args: [] };
 };
 
-/** Highest snapshot in the window; exact while retention covers the window. */
-export function getWindowPeak(scope: PeakScope, since: number): PeakInfo {
+/** Highest snapshot in [since, until); exact while retention covers the window. */
+export function getWindowPeak(scope: PeakScope, since: number, until: number = Number.MAX_SAFE_INTEGER): PeakInfo {
     const { sql, args } = snapshotScopeSql(scope);
     const row = db.prepare<(string | number)[], Pick<ConcurrentSnapshotRow, "count" | "timestamp">>(
         `SELECT count, timestamp FROM concurrent_snapshots
-         WHERE ${sql} AND timestamp >= ?
+         WHERE ${sql} AND timestamp >= ? AND timestamp < ?
          ORDER BY count DESC, timestamp ASC LIMIT 1`
-    ).get(...args, since);
+    ).get(...args, since, until);
     return row ? { count: row.count, timestamp: row.timestamp } : { count: 0, timestamp: null };
 }
 
@@ -124,4 +124,29 @@ export function getAllTimePeak(scope: PeakScope): PeakInfo {
     ).get(...scopes);
     if (row) return { count: row.count, timestamp: row.timestamp };
     return getWindowPeak(scope, 0);
+}
+
+export type ConcurrentBucket = "day" | "month";
+
+// Constant whitelist — the format is interpolated into SQL, never user input.
+const BUCKET_FORMAT: Record<ConcurrentBucket, string> = { day: "%Y-%m-%d", month: "%Y-%m" };
+
+/**
+ * Peak concurrent streams per local day/month. Snapshot-backed, so buckets
+ * older than the snapshot retention simply don't appear.
+ */
+export function getConcurrentSeries(
+    scope: PeakScope,
+    since: number,
+    bucket: ConcurrentBucket,
+): { bucket: string; total: number }[] {
+    const { sql, args } = snapshotScopeSql(scope);
+    return db.prepare<(string | number)[], { bucket: string; total: number }>(
+        `SELECT strftime('${BUCKET_FORMAT[bucket]}', datetime(timestamp / 1000, 'unixepoch', 'localtime')) as bucket,
+                MAX(count) as total
+         FROM concurrent_snapshots
+         WHERE ${sql} AND timestamp >= ?
+         GROUP BY bucket
+         ORDER BY bucket`
+    ).all(...args, since);
 }

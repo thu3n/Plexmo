@@ -3,6 +3,7 @@ import {
     buildHeatmapGrid,
     formatBucketLabel,
     formatDateRange,
+    formatResolutionChange,
     formatHours,
     percentOf,
     trendPercent,
@@ -44,5 +45,10 @@ describe("overview-math", () => {
     it("formatBucketLabel handles monthly and daily buckets", () => {
         expect(formatBucketLabel("2024-04")).toBe("Apr 2024");
         expect(formatBucketLabel("2026-09-05")).toBe("Sep 5");
+    });
+
+    it("formatResolutionChange suffixes bare heights", () => {
+        expect(formatResolutionChange("4K → 1080")).toBe("4K → 1080p");
+        expect(formatResolutionChange("1080 → 720")).toBe("1080p → 720p");
     });
 });

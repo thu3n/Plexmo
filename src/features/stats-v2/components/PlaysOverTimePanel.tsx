@@ -3,20 +3,25 @@
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Skeleton } from "@/components/Skeleton";
-import { Panel, Tabs, type TabOption } from "./Panel";
-import { formatBucketLabel, formatCount } from "../lib/overview-math";
-import { usePlaysSeries } from "../hooks/useStatsV2";
+import { EmptyRow, Panel, Tabs, type TabOption } from "./Panel";
+import { formatBucketLabel, formatCount, secondsToChartHours } from "../lib/overview-math";
+import { useActivitySeries, useConcurrentSeries } from "../hooks/useStatsV2";
 
 type Metric = "plays" | "watch" | "users" | "concurrent";
 
-// Only plays has a time series today; the other tabs mirror the target design
-// and stay disabled until their backend series exist.
 const METRICS: TabOption<Metric>[] = [
     { key: "plays", label: "Plays" },
-    { key: "watch", label: "Watch time", disabled: true },
-    { key: "users", label: "Users", disabled: true },
-    { key: "concurrent", label: "Concurrent", disabled: true },
+    { key: "watch", label: "Watch time" },
+    { key: "users", label: "Users" },
+    { key: "concurrent", label: "Concurrent" },
 ];
+
+const TOOLTIP_LABEL: Record<Metric, string> = {
+    plays: "Plays",
+    watch: "Hours",
+    users: "Users",
+    concurrent: "Peak streams",
+};
 
 const CHART_HEIGHT = 170;
 const LINE = "#3b82f6";
@@ -26,15 +31,26 @@ const compactTick = (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : Str
 
 export function PlaysOverTimePanel({ days, serverId }: { days: number; serverId: string | null }) {
     const [metric, setMetric] = useState<Metric>("plays");
-    const series = usePlaysSeries(days, serverId);
+    const activity = useActivitySeries(days, serverId);
+    const concurrent = useConcurrentSeries(days, serverId);
+
+    const points =
+        metric === "concurrent"
+            ? concurrent?.map((r) => ({ bucket: r.bucket, value: r.total }))
+            : activity?.map((r) => ({
+                  bucket: r.bucket,
+                  value: metric === "plays" ? r.total : metric === "users" ? r.users : secondsToChartHours(r.seconds),
+              }));
 
     return (
         <Panel title="Plays over time" action={<Tabs options={METRICS} value={metric} onChange={setMetric} />}>
-            {!series ? (
+            {!points ? (
                 <Skeleton className="h-[170px] rounded-lg" />
+            ) : points.length === 0 ? (
+                <div className="flex h-[170px] items-center justify-center"><EmptyRow /></div>
             ) : (
                 <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
-                    <AreaChart data={series} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <AreaChart data={points} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                         <defs>
                             <linearGradient id="v2-plays-fill" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor={LINE} stopOpacity={0.55} />
@@ -55,14 +71,20 @@ export function PlaysOverTimePanel({ days, serverId }: { days: number; serverId:
                             tick={{ fill: AXIS, fontSize: 9 }}
                             axisLine={false}
                             tickLine={false}
-                            allowDecimals={false}
+                            allowDecimals={metric === "watch"}
                         />
                         <Tooltip
                             contentStyle={{ backgroundColor: "#0b1222", border: "1px solid #1b2742", borderRadius: 8, fontSize: 12 }}
                             labelFormatter={(label) => formatBucketLabel(String(label))}
-                            formatter={(value) => [formatCount(Number(value)), "Plays"]}
+                            formatter={(value) => [formatCount(Number(value)), TOOLTIP_LABEL[metric]]}
                         />
-                        <Area type="monotone" dataKey="total" stroke={LINE} strokeWidth={2} fill="url(#v2-plays-fill)" />
+                        <Area
+                            type={metric === "concurrent" ? "stepAfter" : "monotone"}
+                            dataKey="value"
+                            stroke={LINE}
+                            strokeWidth={2}
+                            fill="url(#v2-plays-fill)"
+                        />
                     </AreaChart>
                 </ResponsiveContainer>
             )}
