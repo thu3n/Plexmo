@@ -18,3 +18,23 @@ export const fetchJsonOrThrow = async <T = unknown>(url: string): Promise<T> => 
     throw new Error(`Unexpected non-JSON response (${res.status})`);
   }) as Promise<T>;
 };
+
+/**
+ * Mutation counterpart of fetchJsonOrThrow: sends a JSON body and throws with
+ * the API's `error` message on non-OK responses. `fetch` itself only rejects
+ * on network failure, so callers that skip the status check report failed
+ * saves/deletes as successes.
+ */
+export const requestJson = async <T = unknown>(
+  url: string,
+  init: { method: "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown }
+): Promise<T> => {
+  const res = await fetch(url, {
+    method: init.method,
+    headers: init.body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+  return data as T;
+};

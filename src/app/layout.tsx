@@ -5,6 +5,7 @@ import "./globals.css";
 import { LanguageProvider } from "@/components/LanguageContext";
 import { GlobalDock } from "@/components/GlobalDock";
 import { SessionGuard } from "@/components/SessionGuard";
+import { FeedbackProvider } from "@/components/ui/Feedback";
 import { APP_BACKGROUND_COLOR } from "@/lib/theme";
 import { APPLE_STARTUP_IMAGES } from "@/lib/pwa-splash";
 
@@ -68,9 +69,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <LanguageProvider>
-          {children}
-          <GlobalDock />
-          <SessionGuard />
+          <FeedbackProvider>
+            {children}
+            <GlobalDock />
+            <SessionGuard />
+          </FeedbackProvider>
         </LanguageProvider>
       </body>
     </html>
