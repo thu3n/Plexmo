@@ -19,9 +19,12 @@ import {
 /** Public alias for the legacy joined (identity x membership) row shape. */
 export type DbUser = UserRow;
 
-export const importUsers = (users: PlexUser[]) => {
+/** The subset of a Plex user an import actually persists. */
+export type ImportableUser = Pick<PlexUser, "id" | "title" | "username" | "email" | "thumb" | "serverId" | "isAdmin">;
+
+export const importUsers = (users: ImportableUser[]) => {
   const now = new Date().toISOString();
-  const transaction = db.transaction((usersToImport: PlexUser[]) => {
+  const transaction = db.transaction((usersToImport: ImportableUser[]) => {
     for (const user of usersToImport) {
       upsertIdentity({
         accountId: user.id,
@@ -81,4 +84,48 @@ export const createGhostUser = (params: {
     title: params.title,
     isAdmin: false,
   });
+};
+
+/** Membership row enriched with that (account, server) bucket's activity totals. */
+export interface DirectoryUserDbRow extends UserRow {
+  plays: number;
+  /** Seconds — wallclock-built, same caveat as user_stats all-time totals. */
+  watchSeconds: number;
+  /** Epoch ms of the latest play on this server, null if never played. */
+  lastPlayedAt: number | null;
+}
+
+/**
+ * Directory listing with activity folded in. Reads the materialized
+ * user_activity_summary (PK accountId+serverId, so the join is an index
+ * lookup per membership) instead of scanning activity_history. Totals stay
+ * per server so the client can re-aggregate under its server filter.
+ */
+export const listDirectoryUsers = (allowedServerIds?: string[]): DirectoryUserDbRow[] => {
+  const scopeIds = allowedServerIds ?? [];
+  const scopeSql = scopeIds.length > 0
+    ? `WHERE su.serverId IN (${scopeIds.map(() => "?").join(",")})`
+    : "";
+  return db
+    .prepare<string[], DirectoryUserDbRow>(
+      `SELECT
+         ui.accountId as id,
+         COALESCE(su.title, ui.title) as title,
+         COALESCE(su.username, ui.username) as username,
+         ui.email as email,
+         COALESCE(su.thumb, ui.thumb) as thumb,
+         su.serverId as serverId,
+         su.importedAt as importedAt,
+         su.isAdmin as isAdmin,
+         COALESCE(uas.total_count, 0) as plays,
+         COALESCE(uas.total_duration, 0) as watchSeconds,
+         uas.last_played_at as lastPlayedAt
+       FROM server_users su
+       JOIN user_identities ui ON ui.accountId = su.accountId
+       LEFT JOIN user_activity_summary uas
+         ON uas.accountId = su.accountId AND uas.serverId = su.serverId
+       ${scopeSql}
+       ORDER BY username ASC`
+    )
+    .all(...scopeIds);
 };

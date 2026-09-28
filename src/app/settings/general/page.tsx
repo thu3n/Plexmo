@@ -5,6 +5,7 @@ import { useLanguage } from "@/components/LanguageContext";
 import { GeneralConfigForm } from "@/features/settings/components/general/GeneralConfigForm";
 import { ApiKeyManager } from "@/features/settings/components/general/ApiKeyManager";
 import { DesktopNavCard } from "@/features/settings/components/general/DesktopNavCard";
+import { RetentionCard } from "@/features/settings/components/general/RetentionCard";
 
 export default function GeneralSettingsPage() {
     const { t } = useLanguage();
@@ -22,6 +23,9 @@ export default function GeneralSettingsPage() {
                     </div>
                     <DesktopNavCard />
                     <ApiKeyManager />
+                    <div className="2xl:col-span-2">
+                        <RetentionCard />
+                    </div>
                 </div>
             </SettingsSection>
         </div>

@@ -1,242 +1,109 @@
-import { getSetting } from "./settings";
-import { PlexSession } from "./plex";
-import { HistoryEntry } from "./history";
+import type { PlexSession } from "./plex/plex-types";
+import type { HistoryEntry } from "./history/types";
 import { db } from "./db";
-import { parseOutboundUrl } from "./outbound-url";
-import type { DiscordWebhookRow, CountRow } from "./db-types";
-
-type DiscordEmbed = {
-    title: string;
-    description?: string;
-    color?: number;
-    fields?: { name: string; value: string; inline?: boolean }[];
-    thumbnail?: { url: string };
-    image?: { url: string };
-    footer?: { text: string; icon_url?: string };
-    timestamp?: string;
-    url?: string;
-};
-
-const COLORS = {
-    START: 0x57F287, // Green
-    STOP: 0xFEE75C,  // Yellow
-    TERMINATE: 0xED4245, // Red
-    DEFAULT: 0x5865F2, // Blurple
-};
-
-export type DiscordWebhook = {
-    id: string;
-    name: string;
-    url: string;
-    events: string[]; // ["start", "stop", "terminate"]
-    enabled: boolean;
-    createdAt: string;
-};
-
-// Migration / Initialization
-const migrateWebhooks = () => {
-    try {
-        const count = db.prepare<[], CountRow>("SELECT COUNT(*) as count FROM discord_webhooks").get()!.count;
-        if (count === 0) {
-            // Check for legacy setting
-            const legacyUrl = getSetting("discordWebhookUrl");
-            if (legacyUrl) {
-                const events = [];
-                if (getSetting("discordNotifyStart", "true") === "true") events.push("start");
-                if (getSetting("discordNotifyStop", "true") === "true") events.push("stop");
-                if (getSetting("discordNotifyTerminate", "true") === "true") events.push("terminate");
-
-                if (events.length > 0) {
-                    db.prepare(`
-                        INSERT INTO discord_webhooks (id, name, url, events, enabled, createdAt)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    `).run(
-                        crypto.randomUUID(),
-                        "Default Webhook",
-                        legacyUrl,
-                        JSON.stringify(events),
-                        getSetting("discordEnabled", "true") === "true" ? 1 : 0,
-                        new Date().toISOString()
-                    );
-                    console.log("[Discord] Migrated legacy webhook");
-                }
-            }
-        }
-    } catch (e) {
-        console.error("[Discord] Migration failed:", e);
-    }
-};
-
-// Run migration check once on module load (or could be explicit)
-migrateWebhooks();
-
-export const getWebhooks = (): DiscordWebhook[] => {
-    try {
-        const rows = db.prepare<[], DiscordWebhookRow>("SELECT * FROM discord_webhooks").all();
-        return rows.map((row): DiscordWebhook => ({
-            id: row.id,
-            name: row.name,
-            url: row.url,
-            events: JSON.parse(row.events),
-            enabled: row.enabled === 1,
-            createdAt: row.createdAt,
-        }));
-    } catch (e) {
-        console.error("Failed to get webhooks:", e);
-        return [];
-    }
-};
-
-export interface WebhookInput {
-    name: string;
-    url: string;
-    events: string[];
-    enabled?: boolean;
-}
-
-/** Create a webhook; returns the generated id. */
-export const createWebhook = (input: WebhookInput): string => {
-    const id = crypto.randomUUID();
-    db.prepare(`
-        INSERT INTO discord_webhooks (id, name, url, events, enabled, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-        id,
-        input.name,
-        input.url,
-        JSON.stringify(input.events),
-        input.enabled === false ? 0 : 1,
-        new Date().toISOString()
-    );
-    return id;
-};
-
-/** Update an existing webhook's editable fields. */
-export const updateWebhook = (id: string, input: WebhookInput): void => {
-    db.prepare(`
-        UPDATE discord_webhooks
-        SET name = @name, url = @url, events = @events, enabled = @enabled
-        WHERE id = @id
-    `).run({
-        id,
-        name: input.name,
-        url: input.url,
-        events: JSON.stringify(input.events),
-        enabled: input.enabled ? 1 : 0,
-    });
-};
-
-export const deleteWebhook = (id: string): void => {
-    db.prepare("DELETE FROM discord_webhooks WHERE id = ?").run(id);
-};
-
-const WEBHOOK_TIMEOUT_MS = 10_000;
+import type { TemplateVars } from "@/features/notifications/lib/events";
+import { dispatchNotification, type EmbedField } from "./notifications/dispatch";
 
 /**
- * Send the payload, refusing targets that fail outbound validation. The write
- * paths validate too; this catches rows persisted before that check existed.
+ * Event-specific Discord senders. Each maps its domain object to template
+ * variables + structured fields and hands off to the generic dispatcher, which
+ * applies the (possibly customised) template and each webhook's event filter.
  */
-const postToWebhook = async (rawUrl: string, embed: DiscordEmbed, label: string): Promise<void> => {
-    const url = parseOutboundUrl(rawUrl);
-    if (!url) {
-        console.error(`Refusing to send Discord notification to ${label}: URL not allowed`);
-        return;
-    }
-    try {
-        await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                username: "Plexmo",
-                embeds: [embed],
-            }),
-            signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
-        });
-    } catch (error) {
-        console.error(`Failed to send Discord notification to ${label}:`, error);
-    }
+
+const SECONDS_PER_MINUTE = 60;
+const MS_PER_MINUTE = 60_000;
+
+/** Keyed by the normalised decisions plex-sessions produces. */
+const DECISION_LABELS: Record<string, string> = {
+    transcode: "Transcode",
+    "direct stream": "Direct Stream",
+    "direct play": "Direct Play",
 };
 
-export const sendDiscordNotification = async (embed: DiscordEmbed, eventType: "start" | "stop" | "terminate" | "test", overrideUrl?: string) => {
-    // If override URL is provided, send only to that URL
-    if (overrideUrl) {
-        await postToWebhook(overrideUrl, embed, "override URL");
-        return;
-    }
+const formatMinutes = (minutes: number): string => `${Math.max(0, Math.round(minutes))} mins`;
 
-    // 1. Get enabled webhooks
-    const webhooks = getWebhooks().filter(w => w.enabled);
-    if (webhooks.length === 0) return;
+const sessionTitle = (session: PlexSession): string =>
+    session.grandparentTitle ? `${session.grandparentTitle} - ${session.title}` : session.title;
 
-    // 2. Filter by event type
-    const targets = eventType === "test"
-        ? webhooks
-        : webhooks.filter(w => w.events.includes(eventType));
+export const sessionVars = (session: PlexSession): TemplateVars => ({
+    user: session.user,
+    title: sessionTitle(session),
+    server: session.serverName,
+    player: session.player || session.device,
+    quality: session.resolution || session.quality,
+    decision: DECISION_LABELS[session.videoDecision ?? ""] ?? "Direct Play",
+});
 
-    if (targets.length === 0) return;
+const sessionFields = (vars: TemplateVars): EmbedField[] => [
+    { name: "Device", value: vars.player ?? "Unknown", inline: true },
+    { name: "Server", value: vars.server ?? "Unknown", inline: true },
+    { name: "Quality", value: `${vars.quality || "Unknown"} · ${vars.decision}`, inline: false },
+];
 
-    // 3. Send to all targets
-    await Promise.allSettled(targets.map((webhook) => postToWebhook(webhook.url, embed, webhook.name)));
-};
+const serverNameStmt = db.prepare<[string], { name: string }>("SELECT name FROM servers WHERE id = ?");
+
+const logFailure = (event: string) => (e: unknown) => console.error(`Failed to send ${event} notification`, e);
 
 export const sendSessionStartNotification = async (session: PlexSession) => {
-    const title = session.grandparentTitle
-        ? `${session.grandparentTitle} - ${session.title}`
-        : session.title;
-
-    const embed: DiscordEmbed = {
-        title: "▶️ Stream Started",
-        description: `**${session.user}** started watching **${title}**`,
-        color: COLORS.START,
-        fields: [
-            { name: "Device", value: session.player || session.device || "Unknown", inline: true },
-            { name: "Server", value: session.serverName || "Unknown", inline: true },
-            { name: "Quality", value: `${session.resolution || "Unknown"} · ${session.videoDecision === "transcode" ? "Transcode" : "Direct Play"}`, inline: false },
-        ],
-        timestamp: new Date().toISOString(),
-        footer: { text: "Plexmo" },
-    };
-
-    await sendDiscordNotification(embed, "start");
+    const vars = sessionVars(session);
+    await dispatchNotification("start", vars, sessionFields(vars));
 };
 
 export const sendSessionStopNotification = async (entry: HistoryEntry) => {
-    const title = entry.subtitle
-        ? `${entry.title} - ${entry.subtitle}`
-        : entry.title;
-
-    const durationMins = Math.round(entry.duration / 60);
-
-    const embed: DiscordEmbed = {
-        title: "⏹️ Stream Stopped",
-        description: `**${entry.user}** stopped watching **${title}**`,
-        color: COLORS.STOP,
-        fields: [
-            { name: "Duration", value: `${durationMins} mins`, inline: true },
-            { name: "Device", value: entry.device || "Unknown", inline: true },
-        ],
-        timestamp: new Date().toISOString(),
-        footer: { text: "Plexmo" },
+    const vars: TemplateVars = {
+        user: entry.user,
+        title: entry.subtitle ? `${entry.title} - ${entry.subtitle}` : entry.title,
+        server: serverNameStmt.get(entry.serverId)?.name,
+        player: entry.device,
+        duration: formatMinutes(entry.duration / SECONDS_PER_MINUTE),
     };
-
-    await sendDiscordNotification(embed, "stop");
+    await dispatchNotification("stop", vars, [
+        { name: "Duration", value: vars.duration!, inline: true },
+        { name: "Device", value: vars.player ?? "Unknown", inline: true },
+    ]);
 };
 
-export const sendSessionTerminatedNotification = async (session: PlexSession, reason: string, overrideUrl?: string) => {
-    const title = session.grandparentTitle
-        ? `${session.grandparentTitle} - ${session.title}`
-        : session.title;
+/** pause / resume / transcode, detected by the session event tracker. */
+export const sendSessionEventNotification = (type: "pause" | "resume" | "transcode", session: PlexSession) => {
+    const vars = sessionVars(session);
+    dispatchNotification(type, vars, sessionFields(vars)).catch(logFailure(type));
+};
 
-    const embed: DiscordEmbed = {
-        title: "⚠️ Stream Terminated",
-        description: `Stream for **${session.user}** watching **${title}** was terminated by admin.`,
-        color: COLORS.TERMINATE,
-        fields: [
+/** Manual termination by an admin (session terminate API). */
+export const sendSessionTerminatedNotification = async (session: PlexSession, reason: string) => {
+    const vars = { ...sessionVars(session), reason };
+    await dispatchNotification("terminate", vars, [{ name: "Reason", value: reason, inline: false }]);
+};
+
+/**
+ * A rule flagged or terminated a session. Goes to the rule's own webhooks
+ * (selected in the rule's Notifications tab, regardless of their event list)
+ * and to every webhook subscribed to "rule_violation" — once each.
+ */
+export const sendRuleViolationNotification = async (
+    session: PlexSession,
+    ruleName: string,
+    reason: string,
+    ruleWebhookIds: readonly string[]
+) => {
+    const vars = { ...sessionVars(session), rule: ruleName, reason };
+    await dispatchNotification(
+        "rule_violation",
+        vars,
+        [
+            { name: "Rule", value: ruleName, inline: true },
             { name: "Reason", value: reason, inline: false },
         ],
-        timestamp: new Date().toISOString(),
-        footer: { text: "Plexmo" },
-    };
+        ruleWebhookIds
+    );
+};
 
-    await sendDiscordNotification(embed, "terminate", overrideUrl);
+export const sendServerHealthNotification = (
+    type: "server_down" | "server_up",
+    serverName: string,
+    outageMs: number,
+    reason?: string
+) => {
+    const vars: TemplateVars = { server: serverName, reason, duration: formatMinutes(outageMs / MS_PER_MINUTE) };
+    dispatchNotification(type, vars).catch(logFailure(type));
 };

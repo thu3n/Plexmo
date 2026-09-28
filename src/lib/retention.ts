@@ -1,6 +1,12 @@
 import { db } from "./db";
 import { getSetting, setSetting } from "./settings";
 import { Logger } from "./logger";
+import {
+  RETENTION_DEFAULTS,
+  RETENTION_LAST_RUN_KEY,
+  RETENTION_SETTING_KEYS,
+  parseRetentionDays,
+} from "./retention-config";
 
 // Daily retention sweep. Called from cron.ts on every 60s tick; gates itself
 // on the local date so the actual DELETEs run at most once per day. Windows
@@ -8,20 +14,11 @@ import { Logger } from "./logger";
 // defaults are conservative (anything user-visible stays, only ops noise is
 // pruned).
 
-const LAST_RUN_KEY = "retention_last_run_date";
-
-// Default windows in days. The corresponding settings keys can override them.
-const DEFAULTS = {
-  concurrentSnapshotsDays: 90,
-  ruleEventsDays: 180,
-  finishedJobsDays: 30,
-} as const;
-
-export const SETTING_KEYS = {
-  concurrentSnapshotsDays: "retention_concurrent_snapshots_days",
-  ruleEventsDays: "retention_rule_events_days",
-  finishedJobsDays: "retention_finished_jobs_days",
-} as const;
+// Defaults, keys and bounds live in retention-config.ts so the settings API and
+// the General settings card share them without importing the DB.
+const DEFAULTS = RETENTION_DEFAULTS;
+const LAST_RUN_KEY = RETENTION_LAST_RUN_KEY;
+export const SETTING_KEYS = RETENTION_SETTING_KEYS;
 
 const todayLocalKey = () => {
   const d = new Date();
@@ -31,8 +28,9 @@ const todayLocalKey = () => {
 const readWindow = (key: string, defaultDays: number): number => {
   const raw = getSetting(key);
   if (!raw) return defaultDays;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : defaultDays;
+  // Out-of-range values predating API validation fall back to the default.
+  const parsed = parseRetentionDays(raw);
+  return parsed.ok ? parsed.days : defaultDays;
 };
 
 const deleteOldConcurrent = db.prepare(

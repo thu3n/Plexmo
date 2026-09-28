@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type RestorePhase = "idle" | "uploading" | "restarting" | "error";
 
@@ -18,6 +18,11 @@ export function useBackupRestore() {
     const [phase, setPhase] = useState<RestorePhase>("idle");
     const [error, setError] = useState<string | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Navigating away mid-restart must not leave the poller running.
+    useEffect(() => () => {
+        if (pollRef.current) clearInterval(pollRef.current);
+    }, []);
 
     const downloadBackup = async () => {
         const response = await fetch("/api/settings/export");

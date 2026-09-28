@@ -3,125 +3,116 @@
 import { useState } from "react";
 import useSWR from "swr";
 import type { RuleInstance } from "@/features/rules/types";
+import { fetchJsonOrThrow, requestJson } from "@/lib/swr-fetch";
+import { errorMessage, useFeedback } from "@/components/ui/Feedback";
+import { getDefaultSettings } from "@/features/rules/constants";
+import { duplicateRule as cloneRule } from "@/features/rules/utils/ruleList";
 
 export type { RuleInstance };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+export type PersistedRule = RuleInstance & { id: string };
+
+export const RULES_ENDPOINT = "/api/rules/instances";
+
+export interface RuleEditorTarget {
+    rule: RuleInstance;
+    /** Set when duplicating: the form seeds its scope from this rule. */
+    scopeSourceId?: string;
+}
 
 export function useRuleManagement() {
-    const { data: rules, error, mutate } = useSWR<RuleInstance[]>("/api/rules/instances", fetcher);
-    const [selectedRule, setSelectedRule] = useState<RuleInstance | undefined>(undefined);
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const { toast, confirm } = useFeedback();
+    const { data: rules, error, isLoading, mutate } = useSWR<PersistedRule[]>(RULES_ENDPOINT, fetchJsonOrThrow);
+    const [editorTarget, setEditorTarget] = useState<RuleEditorTarget | undefined>(undefined);
     const [isTypeSelectionOpen, setIsTypeSelectionOpen] = useState(false);
 
-    const openCreateModal = () => {
-        setIsTypeSelectionOpen(true);
-    };
+    const openCreateModal = () => setIsTypeSelectionOpen(true);
 
     const selectRuleType = (type: string) => {
         setIsTypeSelectionOpen(false);
-        // Initialize new rule with selected type
-        setSelectedRule({
-            type,
-            name: "",
-            enabled: true,
-            settings: {
-                limit: 1,
-                enforce: false,
-                kill_all: false,
-                message: ""
+        setEditorTarget({
+            rule: {
+                type,
+                name: "",
+                enabled: true,
+                settings: getDefaultSettings(type),
+                discordWebhookId: null,
+                discordWebhookIds: [],
             },
-            discordWebhookId: null,
-            discordWebhookIds: []
         });
-        setIsModalOpen(true);
     };
 
-    const openEditModal = (rule: RuleInstance) => {
-        setSelectedRule(rule);
-        setIsModalOpen(true);
-    };
+    const openEditModal = (rule: RuleInstance) => setEditorTarget({ rule });
+
+    const duplicateRule = (rule: PersistedRule) => setEditorTarget({ rule: cloneRule(rule), scopeSourceId: rule.id });
 
     const closeModals = () => {
-        setIsModalOpen(false);
+        setEditorTarget(undefined);
         setIsTypeSelectionOpen(false);
-        setSelectedRule(undefined);
     };
 
     const deleteRule = async (id: string, name: string) => {
-        if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+        const ok = await confirm({
+            title: "Delete rule?",
+            message: `"${name}" will be removed along with its user and server assignments.`,
+            confirmLabel: "Delete",
+            destructive: true,
+        });
+        if (!ok) return;
 
         try {
-            await fetch(`/api/rules/instances/${id}`, { method: "DELETE" });
-            mutate();
-        } catch (error) {
-            console.error("Failed to delete rule", error);
+            await requestJson(`${RULES_ENDPOINT}/${id}`, { method: "DELETE" });
+            toast(`Deleted "${name}"`);
+        } catch (err) {
+            toast(errorMessage(err, "Failed to delete rule"), "error");
+        } finally {
+            await mutate();
         }
     };
 
     const toggleRule = async (id: string, enabled: boolean) => {
-        // Optimistic update
-        mutate(
-            rules?.map(r => r.id === id ? { ...r, enabled } : r),
-            false
+        await mutate(
+            (current) => current?.map((r) => (r.id === id ? { ...r, enabled } : r)),
+            { revalidate: false }
         );
-
         try {
-            const rule = rules?.find(r => r.id === id);
-            if (rule) {
-                await fetch(`/api/rules/instances/${id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ...rule, enabled }),
-                });
-                mutate();
-            }
-        } catch (error) {
-            console.error("Failed to toggle rule", error);
-            mutate(); // Revert
+            await requestJson(`${RULES_ENDPOINT}/${id}`, { method: "PUT", body: { enabled } });
+        } catch (err) {
+            toast(errorMessage(err, "Failed to update rule"), "error");
+        } finally {
+            // Revalidate either way: confirms success, or reverts the optimistic flip.
+            await mutate();
         }
     };
 
+    /** Throws on failure so the editor can stay open with the user's input intact. */
     const saveRule = async (rule: RuleInstance) => {
-        try {
-            if (rule.id) {
-                // Update
-                await fetch(`/api/rules/instances/${rule.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(rule),
-                });
-            } else {
-                // Create
-                await fetch("/api/rules/instances", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(rule),
-                });
-            }
-            mutate();
-            setIsModalOpen(false);
-        } catch (error) {
-            console.error("Failed to save rule", error);
-            throw error;
+        if (rule.id) {
+            await requestJson(`${RULES_ENDPOINT}/${rule.id}`, { method: "PUT", body: rule });
+        } else {
+            await requestJson(RULES_ENDPOINT, { method: "POST", body: rule });
         }
+        toast(rule.id ? `Saved "${rule.name}"` : `Created "${rule.name}"`);
+        setEditorTarget(undefined);
+        await mutate();
     };
 
     return {
         rules,
-        isLoading: !rules && !error,
-        error,
-        selectedRule,
-        isModalOpen,
+        isLoading,
+        error: error as Error | undefined,
+        retry: () => mutate(),
+        editorTarget,
         isTypeSelectionOpen,
         actions: {
             openCreateModal,
             selectRuleType,
             openEditModal,
+            duplicateRule,
             closeModals,
             deleteRule,
             toggleRule,
-            saveRule
-        }
+            saveRule,
+        },
     };
 }

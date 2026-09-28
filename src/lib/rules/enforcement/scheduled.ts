@@ -4,7 +4,7 @@ import type { PersistedRuleInstance } from "../types";
 import { isUserBlockedBySchedule } from "../rules-schedule";
 import { logRuleEvent, closeRuleEvent, updateRuleEventDetails } from "../rules-assignments";
 import { getOpenEvents, type RuleScope } from "./context";
-import { terminateWithNotify } from "./terminate";
+import { notifyRuleFlagOnce, terminateWithNotify } from "./terminate";
 
 export const enforceScheduledAccess = async (
   instance: PersistedRuleInstance,
@@ -50,6 +50,8 @@ export const enforceScheduledAccess = async (
     } else if (openEvent.details.enforced === true) {
       continue;
     }
+
+    await notifyRuleFlagOnce(user.sessions[0], instance, openEvent, "Streaming outside the allowed schedule");
 
     if (instance.settings.enforce) {
       const terminationReason =

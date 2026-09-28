@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { Trash2, Plus } from "lucide-react";
 import type { RuleInstance } from "@/features/rules/types";
+import RuleSwitch from "../ui/RuleSwitch";
 
 interface ScheduledAccessFormProps {
     formData: RuleInstance;
@@ -210,12 +211,12 @@ export default function ScheduledAccessForm({ formData, setFormData }: Scheduled
                     <div className="font-medium text-white text-sm">Enforce scheduled access restrictions</div>
                     <div className="text-xs text-white/40 mt-0.5">Terminate streams when users access during blocked time windows</div>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                    <div className={clsx("w-10 h-6 rounded-full transition-colors relative shrink-0", formData.settings.enforce ? "bg-amber-500" : "bg-white/10")}>
-                        <div className={clsx("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform", formData.settings.enforce ? "translate-x-4" : "translate-x-0")} />
-                    </div>
-                    <input type="checkbox" className="hidden" checked={formData.settings.enforce} onChange={e => setFormData({ ...formData, settings: { ...formData.settings, enforce: e.target.checked } })} />
-                </label>
+                <RuleSwitch
+                    checked={!!formData.settings.enforce}
+                    onChange={(on) => setFormData({ ...formData, settings: { ...formData.settings, enforce: on } })}
+                    label="Enforce scheduled access restrictions"
+                    activeClassName="bg-amber-500"
+                />
             </div>
         </div>
     );

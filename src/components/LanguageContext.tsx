@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import { translations, Language } from "@/lib/i18n";
 
 interface LanguageContextType {
@@ -10,34 +10,32 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
-    // const [language, setLanguageState] = useState<Language>("en");
+    // The UI ships English-only; the Language type keeps the lookup typed.
     const language: Language = "en";
-
-    // useEffect removed - no longer reading from localStorage
-
-    // setLanguage removed
-
 
     const t = (path: string, params?: Record<string, string>): string => {
         const keys = path.split(".");
-        let current: any = translations[language];
+        let current: unknown = translations[language];
 
         for (const key of keys) {
-            if (current[key] === undefined) {
+            const next = typeof current === "object" && current !== null
+                ? (current as Record<string, unknown>)[key]
+                : undefined;
+            if (next === undefined) {
                 console.warn(`Missing translation for key: ${path}`);
                 return path;
             }
-            current = current[key];
+            current = next;
         }
 
         if (typeof current !== "string") {
             return path;
         }
 
-        let result = current;
+        let result: string = current;
         if (params) {
             Object.entries(params).forEach(([key, value]) => {
-                result = result.replace(`{${key}}`, value);
+                result = result.replaceAll(`{${key}}`, value);
             });
         }
 

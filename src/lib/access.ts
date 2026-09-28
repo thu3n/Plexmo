@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import type { AllowedUserRow } from "./db-types";
+import { parseServerIds } from "./authz";
 
 /** Public alias for the raw `allowed_users` row shape. */
 export type AllowedUser = AllowedUserRow;
+
+/** API shape: serverIds parsed; null = every server (default policy). */
+export type AllowedUserView = Omit<AllowedUser, "serverIds"> & { serverIds: string[] | null };
 
 const listStmt = db.prepare<[], AllowedUser>("SELECT * FROM allowed_users ORDER BY datetime(createdAt) DESC");
 const insertStmt = db.prepare<AllowedUser>(
@@ -12,6 +16,11 @@ const insertStmt = db.prepare<AllowedUser>(
 const deleteStmt = db.prepare<[string]>("DELETE FROM allowed_users WHERE id = ?");
 
 const cleanupStmt = db.prepare("DELETE FROM allowed_users WHERE expiresAt IS NOT NULL AND expiresAt < ?");
+
+export const toAllowedUserView = (user: AllowedUser): AllowedUserView => ({
+    ...user,
+    serverIds: parseServerIds(user.serverIds),
+});
 
 export const listAllowedUsers = async (): Promise<AllowedUser[]> => {
     cleanupStmt.run(new Date().toISOString());
@@ -42,6 +51,9 @@ export const addAllowedUser = async (
     return newUser;
 };
 
-export const removeAllowedUser = async (id: string): Promise<void> => {
-    deleteStmt.run(id);
-};
+/**
+ * Remove a whitelist entry. Takes effect immediately for open sessions too:
+ * the request guard re-resolves every viewer against this table.
+ * Returns false when no such entry existed.
+ */
+export const removeAllowedUser = (id: string): boolean => deleteStmt.run(id).changes > 0;

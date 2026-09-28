@@ -3,7 +3,7 @@ import type { PlexServerConfig, PlexSession } from "../../plex";
 import type { PersistedRuleInstance } from "../types";
 import { logRuleEvent, closeRuleEvent, updateRuleEventDetails } from "../rules-assignments";
 import { getActiveStreamRow, getOpenEvents, type RuleScope } from "./context";
-import { terminateWithNotify } from "./terminate";
+import { notifyRuleFlagOnce, terminateWithNotify } from "./terminate";
 
 const normalizeIp = (ip: string) => {
   if (ip === "::1") return "127.0.0.1";
@@ -82,6 +82,13 @@ export const enforceConcurrentStreams = async (
       // Already enforced, waiting for the sessions to die. Do not re-terminate.
       continue;
     }
+
+    await notifyRuleFlagOnce(
+      selectSessionsToKill(user.sessions, limit, false).at(-1),
+      instance,
+      openEvent,
+      `${count} concurrent streams (limit ${limit})`
+    );
 
     if (enforce) {
       const terminationReason = message || "Stream Limit Exceeded";

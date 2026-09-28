@@ -32,13 +32,12 @@ describe("groupUsers", () => {
         expect(users).toHaveLength(2);
     });
 
-    it("isAdmin/isImported are true if ANY membership has them", () => {
+    it("isAdmin is true if ANY membership has it", () => {
         const users = groupUsers([
-            row({ isAdmin: false, isImported: true }),
-            row({ serverId: "srv-b", serverName: "Beta", isAdmin: true, isImported: false }),
+            row({ isAdmin: false }),
+            row({ serverId: "srv-b", serverName: "Beta", isAdmin: true }),
         ]);
         expect(users[0].isAdmin).toBe(true);
-        expect(users[0].isImported).toBe(true);
     });
 
     it("prefers a row that has a thumb", () => {

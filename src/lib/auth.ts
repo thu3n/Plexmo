@@ -1,8 +1,6 @@
 import { listServersForOwnership } from "./servers";
 import { db } from "./db";
 import { reattributeOwnerAlias } from "./identity";
-import { XMLParser } from "fast-xml-parser";
-import { type SessionUser } from "./jwt";
 
 export type PmoUser = {
     id: string;
@@ -40,6 +38,9 @@ export async function getPlexUser(token: string): Promise<PmoUser> {
     };
 }
 
+
+/** Matches the viewer session lifetime issued by /api/auth/plex ("7d"). */
+const ONE_TIME_GRANT_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type AccessCheck = {
     allowed: boolean;
@@ -91,35 +92,40 @@ export async function verifyAccess(userToken: string): Promise<AccessCheck> {
             if (serverOwner.id === loggingInUser.id) {
                 return { allowed: true, role: "owner" };
             }
-        } catch (e) {
-            // ignore
+        } catch {
+            // Unreachable server / revoked token: not this server's owner.
         }
     }
 
 
-    // 3. Check Whitelist
+    // 3. Check Whitelist. Stored emails are lowercased (addAllowedUser,
+    // redeemInvite); Plex may report mixed case.
     try {
-        const stmt = db.prepare<[string], { id: string; removeAfterLogin: number; expiresAt: string | null }>("SELECT * FROM allowed_users WHERE email = ?");
-        const allowed = stmt.get(loggingInUser.email);
+        const stmt = db.prepare<[string], { id: string; removeAfterLogin: number; expiresAt: string | null }>(
+            "SELECT id, removeAfterLogin, expiresAt FROM allowed_users WHERE email = ?"
+        );
+        const allowed = stmt.get(String(loggingInUser.email ?? "").toLowerCase().trim());
 
         if (allowed) {
-            // Check expiry
-            if (allowed.expiresAt) {
-                const expiryDate = new Date(allowed.expiresAt);
-                const now = new Date();
-
-                // If the stored date has no timezone (e.g. from datetime-local), standard Date parsing
-                // might treat it as a different timezone than expected or Local.
-                // However, ignoring that complexity for a moment, simply checking if now > expiry is the baseline.
-                if (now > expiryDate) {
-                    db.prepare("DELETE FROM allowed_users WHERE id = ?").run(allowed.id);
-                    return { allowed: false, role: "viewer" };
-                }
+            const now = Date.now();
+            if (allowed.expiresAt && now > new Date(allowed.expiresAt).getTime()) {
+                db.prepare("DELETE FROM allowed_users WHERE id = ?").run(allowed.id);
+                return { allowed: false, role: "viewer" };
             }
 
-            // Handle "Remove after login" (One-time access)
+            // One-time access: the entry is NOT deleted at login — viewer
+            // sessions are re-checked against their entry on every request
+            // (authz.resolveScope), so deleting it would kill the session just
+            // issued. It becomes a grant bounded by that session's lifetime
+            // instead (visible and revocable); after that, access ends.
             if (allowed.removeAfterLogin === 1) {
-                db.prepare("DELETE FROM allowed_users WHERE id = ?").run(allowed.id);
+                const sessionEnd = now + ONE_TIME_GRANT_MS;
+                const existingEnd = allowed.expiresAt ? new Date(allowed.expiresAt).getTime() : Infinity;
+                const boundedEnd = Number.isFinite(existingEnd) ? Math.min(existingEnd, sessionEnd) : sessionEnd;
+                db.prepare("UPDATE allowed_users SET removeAfterLogin = 0, expiresAt = ? WHERE id = ?").run(
+                    new Date(boundedEnd).toISOString(),
+                    allowed.id
+                );
             }
 
             return { allowed: true, role: "viewer" };

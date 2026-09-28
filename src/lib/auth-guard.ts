@@ -3,7 +3,7 @@ import { verifyToken } from "@/lib/jwt";
 import { validateApiKey } from "@/lib/api-auth";
 import { getIdentity, isAdminAnywhere } from "@/lib/identity";
 import { hasCompletedSetup } from "@/lib/servers";
-import { resolveScope, isOwnerLike, type AccessScope } from "@/lib/authz";
+import { resolveScope, isOwnerLike, isRevokedScope, type AccessScope } from "@/lib/authz";
 import { isWizardAllowedApi } from "@/lib/wizard-allowlist";
 
 export type AuthorizedUser = {
@@ -46,6 +46,12 @@ export async function authorizeApiKeyOrSession(request: Request): Promise<Author
             }
 
             const scope = resolveScope(sessionPayload);
+            // A viewer removed from Settings -> Access (or whose grant
+            // expired) still holds a signed 7-day cookie; the grant is the
+            // source of truth, so the session dies with it.
+            if (isRevokedScope(scope)) {
+                return null;
+            }
 
             // Re-fetch from DB to ensure we have the latest admin status —
             // the session token might be stale.

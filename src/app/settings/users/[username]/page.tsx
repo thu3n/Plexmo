@@ -15,20 +15,17 @@ import { UserUsageCard } from "@/features/users/components/UserUsageCard";
 import { UserRecentlyPlayed } from "@/features/users/components/UserRecentlyPlayed";
 import { UserRulesTab } from "@/features/users/components/UserRulesTab";
 import { Skeleton } from "@/components/Skeleton";
+import { UserDetailTabs, panelId, tabId, type UserDetailTab } from "@/features/users/components/UserDetailTabs";
 import { DEFAULT_PERIOD, daysForPeriod, type PeriodKey } from "@/features/users/lib/periods";
-
-const fetchJson = async <T,>(url: string): Promise<T> => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Failed to fetch stats");
-    return response.json();
-};
+import { fetchJsonOrThrow } from "@/lib/swr-fetch";
+import { ArrowLeft } from "lucide-react";
 
 export default function UserStatsPage({ params }: { params: Promise<{ username: string }> }) {
     const { username } = use(params);
     const decodedUsername = decodeURIComponent(username);
     const searchParams = useSearchParams();
     const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
-    const [activeTab, setActiveTab] = useState<"stats" | "rules">("stats");
+    const [activeTab, setActiveTab] = useState<UserDetailTab>("stats");
     // The stat chips double as the chart period selector.
     const [period, setPeriod] = useState<PeriodKey>(DEFAULT_PERIOD);
     const days = daysForPeriod(period);
@@ -43,9 +40,9 @@ export default function UserStatsPage({ params }: { params: Promise<{ username: 
             ? "/settings/rules"
             : "/settings/users";
 
-    const { data: stats, isLoading, error } = useSWR<UserStats>(
+    const { data: stats, error, mutate } = useSWR<UserStats>(
         username ? `/api/stats/user?username=${encodeURIComponent(decodedUsername)}` : null,
-        fetchJson
+        fetchJsonOrThrow
     );
 
     return (
@@ -54,11 +51,10 @@ export default function UserStatsPage({ params }: { params: Promise<{ username: 
             <header className="mb-8 flex items-center gap-6">
                 <Link
                     href={backLink}
+                    aria-label="Back"
                     className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white transition"
                 >
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
+                    <ArrowLeft className="h-5 w-5" aria-hidden />
                 </Link>
                 <div className="flex items-center gap-4">
                     <div className="h-16 w-16 overflow-hidden rounded-full ring-2 ring-white/10">
@@ -77,55 +73,53 @@ export default function UserStatsPage({ params }: { params: Promise<{ username: 
                 </div>
             </header>
 
-            {/* Tabs */}
-            <div className="flex items-center gap-4 mb-8 border-b border-white/10">
-                <button
-                    onClick={() => setActiveTab("stats")}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "stats" ? "border-amber-500 text-white" : "border-transparent text-white/50 hover:text-white/80"}`}
-                >
-                    Statistics
-                </button>
-                <button
-                    onClick={() => setActiveTab("rules")}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "rules" ? "border-amber-500 text-white" : "border-transparent text-white/50 hover:text-white/80"}`}
-                >
-                    Rules
-                </button>
-            </div>
+            <UserDetailTabs active={activeTab} onChange={setActiveTab} />
 
-            {activeTab === "stats" && error && (
-                <div className="rounded-2xl glass-panel border border-rose-500/20 p-6 text-center text-rose-200">
-                    Error loading stats.
-                </div>
-            )}
+            <div role="tabpanel" id={panelId(activeTab)} aria-labelledby={tabId(activeTab)}>
+                {activeTab === "stats" && error && !stats && (
+                    <div role="alert" className="rounded-2xl glass-panel border border-rose-500/20 p-6 text-center text-rose-200">
+                        <p>Error loading stats.</p>
+                        {error instanceof Error && error.message && (
+                            <p className="mt-1 text-sm text-white/40">{error.message}</p>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => mutate()}
+                            className="mt-4 rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
 
-            {activeTab === "stats" && !error && (isLoading || !stats) && (
-                <div className="space-y-8">
-                    <Skeleton className="h-[88px] rounded-2xl" />
-                    <Skeleton className="h-28 rounded-2xl" />
-                    <Skeleton className="h-[280px] rounded-2xl" />
-                </div>
-            )}
+                {activeTab === "stats" && !error && !stats && (
+                    <div className="space-y-8">
+                        <Skeleton className="h-[88px] rounded-2xl" />
+                        <Skeleton className="h-28 rounded-2xl" />
+                        <Skeleton className="h-[280px] rounded-2xl" />
+                    </div>
+                )}
 
-            {activeTab === "stats" && stats && (
-                <div className="space-y-8">
-                    <UserPeriodChips global={stats.global} selected={period} onSelect={setPeriod} />
-                    <UserStreakBanner streaks={stats.streaks} />
-                    {stats.accountId && <UserChartsSection accountId={stats.accountId} days={days} />}
-                    {/* min-w-0 keeps the horizontally scrolling strips contained
-                        inside their grid tracks instead of widening the page. */}
-                    <div className="grid gap-6 xl:grid-cols-3">
-                        <div className="min-w-0">
-                            <UserUsageCard platforms={stats.platforms} players={stats.players} />
-                        </div>
-                        <div className="min-w-0 xl:col-span-2">
-                            <UserRecentlyPlayed entries={stats.recentlyPlayed} onSelect={setSelectedEntry} />
+                {activeTab === "stats" && stats && (
+                    <div className="space-y-8">
+                        <UserPeriodChips global={stats.global} selected={period} onSelect={setPeriod} />
+                        <UserStreakBanner streaks={stats.streaks} />
+                        {stats.accountId && <UserChartsSection accountId={stats.accountId} days={days} />}
+                        {/* min-w-0 keeps the horizontally scrolling strips contained
+                            inside their grid tracks instead of widening the page. */}
+                        <div className="grid gap-6 xl:grid-cols-3">
+                            <div className="min-w-0">
+                                <UserUsageCard platforms={stats.platforms} players={stats.players} />
+                            </div>
+                            <div className="min-w-0 xl:col-span-2">
+                                <UserRecentlyPlayed entries={stats.recentlyPlayed} onSelect={setSelectedEntry} />
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            {activeTab === "rules" && <UserRulesTab username={decodedUsername} />}
+                {activeTab === "rules" && <UserRulesTab username={decodedUsername} />}
+            </div>
 
             {selectedEntry && (
                 <HistoryModal

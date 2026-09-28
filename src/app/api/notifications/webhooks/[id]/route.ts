@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { updateWebhook, deleteWebhook } from "@/lib/discord";
+import { updateWebhook, deleteWebhook } from "@/lib/notifications/webhook-store";
+import { parseWebhookInput } from "@/lib/notifications/webhook-input";
 import { requireOwner } from "@/lib/auth-guard";
-import { isAllowedOutboundUrl } from "@/lib/outbound-url";
 import { Logger } from "@/lib/logger";
 
 interface Props {
@@ -15,21 +15,16 @@ export async function PUT(request: Request, props: Props) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const params = await props.params;
+    const { id } = await props.params;
     try {
-        const { id } = params;
-        const body = await request.json();
-        const { name, url, events, enabled } = body;
-
-        if (!name || !url || !Array.isArray(events)) {
-            return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+        // A blank/omitted URL keeps the stored one (the client only has a masked copy).
+        const parsed = parseWebhookInput(await request.json().catch(() => null), { requireUrl: false });
+        if (!parsed.ok) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        if (!isAllowedOutboundUrl(url)) {
-            return NextResponse.json({ error: "Invalid webhook URL" }, { status: 400 });
+        if (!updateWebhook(id, parsed.input)) {
+            return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
         }
-
-        updateWebhook(id, { name, url, events, enabled });
-
         return NextResponse.json({ success: true });
     } catch (error) {
         Logger.error("Failed to update webhook:", error);
@@ -42,12 +37,12 @@ export async function DELETE(request: Request, props: Props) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const params = await props.params;
+    const { id } = await props.params;
     try {
-        const { id } = params;
         deleteWebhook(id);
         return NextResponse.json({ success: true });
     } catch (error) {
+        Logger.error("Failed to delete webhook:", error);
         return NextResponse.json({ error: "Failed to delete webhook" }, { status: 500 });
     }
 }

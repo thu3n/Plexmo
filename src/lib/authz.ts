@@ -15,6 +15,37 @@ export type AccessScope = {
   serverIds: string[] | "all";
 };
 
+/** Parse a stored serverIds JSON column; NULL, malformed or empty = null (all servers). */
+export const parseServerIds = (json: string | null): string[] | null => {
+  if (!json) return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed.map(String) : null;
+  } catch {
+    return null;
+  }
+};
+
+type ViewerGrantRow = { serverIds: string | null; expiresAt: string | null };
+
+const isGrantExpired = (expiresAt: string | null, now: number): boolean =>
+  // Unparseable dates count as "no expiry", matching verifyAccess at login.
+  !!expiresAt && new Date(expiresAt).getTime() <= now;
+
+/**
+ * The live whitelist grant behind a viewer session, or null when the owner
+ * removed it or it expired. Viewer JWTs live 7 days, so this is re-read on
+ * every request: removing a person from Settings -> Access must cut off a
+ * session that is already open, not just the next login.
+ */
+export const findViewerGrant = (email: string, now: number = Date.now()): { serverIds: string[] | "all" } | null => {
+  const row = db
+    .prepare<[string], ViewerGrantRow>("SELECT serverIds, expiresAt FROM allowed_users WHERE email = ?")
+    .get(email.toLowerCase().trim());
+  if (!row || isGrantExpired(row.expiresAt, now)) return null;
+  return { serverIds: parseServerIds(row.serverIds) ?? "all" };
+};
+
 export const resolveScope = (user: Pick<SessionUser, "id" | "email" | "role"> | { id: string; email?: string; role?: string }): AccessScope => {
   if (user.id === "apikey") {
     return { role: "api", serverIds: "all" };
@@ -25,29 +56,23 @@ export const resolveScope = (user: Pick<SessionUser, "id" | "email" | "role"> | 
     return { role, serverIds: "all" };
   }
 
-  // Viewers: an explicit serverIds list on their whitelist entry narrows the
-  // scope. A missing entry (e.g. one-time removeAfterLogin rows) or a NULL
-  // list means "all servers" — the default equal-access policy.
+  // Viewers: a NULL serverIds list means "all servers" (the default
+  // equal-access policy); an explicit list narrows the scope. A MISSING or
+  // expired entry means access was revoked -> the empty, match-nothing scope.
+  // Fail closed on DB errors: a viewer must never widen to "all" by accident.
+  if (!user.email) return { role, serverIds: [] };
   try {
-    if (user.email) {
-      const row = db
-        .prepare<[string], { serverIds: string | null }>(
-          "SELECT serverIds FROM allowed_users WHERE email = ?"
-        )
-        .get(user.email.toLowerCase());
-      if (row?.serverIds) {
-        const parsed = JSON.parse(row.serverIds);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return { role, serverIds: parsed.map(String) };
-        }
-      }
-    }
+    const grant = findViewerGrant(user.email);
+    return { role, serverIds: grant ? grant.serverIds : [] };
   } catch (e) {
     Logger.error("[Authz] Failed to resolve viewer scope:", e);
+    return { role, serverIds: [] };
   }
-
-  return { role, serverIds: "all" };
 };
+
+/** A viewer whose whitelist entry is gone — the session must be rejected. */
+export const isRevokedScope = (scope: AccessScope): boolean =>
+  scope.serverIds !== "all" && scope.serverIds.length === 0;
 
 /**
  * Instance-administration check. Allowed: owners and first-run `setup`
@@ -90,6 +115,15 @@ export const canUpgradeSessionToOwner = (
 export const canAccessServer = (scope: AccessScope, serverId: string): boolean =>
   scope.serverIds === "all" || scope.serverIds.includes(serverId);
 
+/**
+ * Stand-in id that matches no server. Downstream query builders treat an
+ * EMPTY allow-list as "no filter", so a revoked scope must never reach them
+ * as [] — that would silently widen to every server.
+ */
+export const NO_SERVER_ID = "__plexmo_no_server__";
+
 /** The serverIds filter to apply to queries, or undefined for unrestricted. */
-export const scopedServerIds = (scope: AccessScope): string[] | undefined =>
-  scope.serverIds === "all" ? undefined : scope.serverIds;
+export const scopedServerIds = (scope: AccessScope): string[] | undefined => {
+  if (scope.serverIds === "all") return undefined;
+  return scope.serverIds.length > 0 ? scope.serverIds : [NO_SERVER_ID];
+};

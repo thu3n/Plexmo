@@ -7,13 +7,14 @@ import { motion } from "framer-motion";
 import { UserMenu } from "@/components/UserMenu";
 import { useLanguage } from "@/components/LanguageContext";
 import { SETTINGS_NAV_ITEMS as navItems } from "@/features/settings/lib/nav-items";
+import { resolveNavLabel } from "@/features/settings/lib/nav-label";
 
 export function SettingsSidebar() {
     const pathname = usePathname();
     const { t } = useLanguage();
 
     return (
-        <aside className="w-64 shrink-0 hidden md:flex flex-col border-r border-white/5 bg-slate-950/60 h-screen sticky top-0 overflow-hidden">
+        <aside className="w-64 shrink-0 hidden md:flex flex-col border-r border-white/5 bg-slate-950/60 h-dvh sticky top-0 overflow-hidden">
             <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
                 <Link href="/" className="flex items-center gap-3 mb-10 group px-2">
                     <div className="h-10 w-10 flex items-center justify-center shrink-0">
@@ -29,13 +30,14 @@ export function SettingsSidebar() {
                     </span>
                 </Link>
 
-                <nav className="space-y-1">
+                <nav aria-label="Settings" className="space-y-1">
                     {navItems.map((item) => {
                         const isActive = pathname.startsWith(item.href);
                         return (
                             <Link
                                 key={item.id}
                                 href={item.href}
+                                aria-current={isActive ? "page" : undefined}
                                 className={clsx(
                                     "relative flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 group overflow-hidden",
                                     isActive
@@ -54,16 +56,7 @@ export function SettingsSidebar() {
                                 )}
                                 <item.icon className={clsx("w-5 h-5 relative z-10 transition-colors duration-300", isActive ? "text-white" : "group-hover:text-white/80")} />
                                 <span className="relative z-10">
-                                    {(() => {
-                                        const translated = t(item.label);
-                                        if (translated !== item.label) return translated;
-                                        // Fallback: try to format settings.key -> Key
-                                        const parts = item.label.split('.');
-                                        if (parts.length > 1) {
-                                            return parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
-                                        }
-                                        return item.label;
-                                    })()}
+                                    {resolveNavLabel(t, item.label)}
                                 </span>
                             </Link>
                         );

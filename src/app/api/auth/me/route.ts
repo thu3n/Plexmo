@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/jwt";
+import { isRevokedScope, resolveScope } from "@/lib/authz";
 
 export async function GET(req: NextRequest) {
     const token = req.cookies.get("token")?.value;
@@ -12,6 +13,12 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
         return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
+
+    // Revoked viewers get a 401 here too, so the client drops to /login
+    // instead of rendering an app whose every data call now fails.
+    if (isRevokedScope(resolveScope(user))) {
+        return NextResponse.json({ error: "Access revoked" }, { status: 401 });
     }
 
     // Explicit whitelist. The session payload carries the user's full plex.tv

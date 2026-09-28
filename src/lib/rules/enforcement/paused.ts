@@ -13,7 +13,7 @@ import {
   type OpenRuleEvent,
   type RuleScope,
 } from "./context";
-import { terminateWithNotify } from "./terminate";
+import { notifyRuleFlagOnce, terminateWithNotify } from "./terminate";
 
 /**
  * Match an open event to a live session. New events store
@@ -110,6 +110,15 @@ export const enforcePausedStreams = async (
         openEvent = findOpenEventForSession(getOpenEvents(instance.id), user.accountId, session);
       } else if (openEvent.details.enforced === true) {
         continue;
+      }
+
+      if (isEnforceable) {
+        await notifyRuleFlagOnce(
+          session,
+          instance,
+          openEvent,
+          `Paused for ${Math.round(pausedDurationMinutes)} minutes (limit ${limit})`
+        );
       }
 
       if (enforce && isEnforceable) {

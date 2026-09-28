@@ -23,7 +23,7 @@ export async function startPlexListener() {
 
     try {
         const { db } = await import('./db');
-        const servers = db.prepare("SELECT * FROM servers WHERE archivedAt IS NULL").all() as DbServer[];
+        const servers = db.prepare("SELECT * FROM servers WHERE archivedAt IS NULL AND disabledAt IS NULL").all() as DbServer[];
 
         if (servers.length === 0) {
             Logger.info('[PlexListener] No servers configured.');
@@ -40,7 +40,7 @@ export async function startPlexListener() {
 }
 
 export function connectToServer(server: DbServer) {
-    if (server.archivedAt) return;
+    if (server.archivedAt || server.disabledAt) return;
     if (activeConnections.has(server.id)) {
         return; // Already connected or connecting
     }
@@ -151,7 +151,7 @@ function scheduleReconnect(serverId: string, serverName: string) {
         try {
             // Check if server still exists and get fresh details (e.g. new token)
             const freshServer = await getServerById(serverId);
-            if (freshServer && !freshServer.archivedAt) {
+            if (freshServer && !freshServer.archivedAt && !freshServer.disabledAt) {
                 connectToServer(freshServer);
             } else {
                 Logger.info(`[PlexListener] Server ${serverName} (${serverId}) has been removed. Stopping reconnection.`);

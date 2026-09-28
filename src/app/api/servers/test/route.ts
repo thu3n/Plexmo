@@ -1,54 +1,46 @@
 import { NextResponse } from "next/server";
-import { plexFetch, normalizePlexUrl } from "@/lib/plex";
+import { normalizePlexUrl } from "@/lib/plex";
 import { authorizeApiKeyOrSession, isOwnerLike } from "@/lib/auth-guard";
+import { getServerToken } from "@/lib/servers";
+import { probePlexServer } from "@/lib/server-probe";
+import { parseTestConnectionBody, resolveTestCredentials } from "@/lib/server-connection-test";
+
+const HTTP_BAD_GATEWAY = 502;
 
 export async function POST(request: Request) {
     // Connection probe against an arbitrary URL — restricted to sessions that
-    // may add servers (owner/setup/API key, or invited onboarding).
+    // may add servers (owner/setup/API key, or invited onboarding). Using a
+    // STORED token is narrowed further to owners inside resolveTestCredentials.
     const user = await authorizeApiKeyOrSession(request);
-    if (!user || !(isOwnerLike(user) || user.scope.role === "onboarding")) {
+    const isOwner = Boolean(user && isOwnerLike(user));
+    if (!user || !(isOwner || user.scope.role === "onboarding")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+
+    let rawBody: unknown;
     try {
-        const body = await request.json();
-        const rawUrl = String(body.baseUrl || "").trim();
-        const baseUrl = normalizePlexUrl(rawUrl);
-        const token = String(body.token || "").trim();
-
-        if (!baseUrl || !token) {
-            return NextResponse.json(
-                { error: "Ange både server-URL och token." },
-                { status: 400 },
-            );
-        }
-
-        // Attempt to fetch basic identity info to verify connection
-        // We use a temporary server config object
-        const tempServerConfig = {
-            baseUrl,
-            token,
-            name: "Test Server",
-            id: "test",
-        };
-
-        // We can fetch /identity via plexFetch, but plexFetch is generic.
-        // Let's just try to fetch the root or identity.
-        try {
-            const result = await plexFetch("/identity", {}, tempServerConfig) as any;
-            const container = result.MediaContainer || {};
-            const serverName = container.friendlyName || "Okänd server";
-
-            return NextResponse.json({
-                success: true,
-                message: "Connected!",
-            });
-        } catch (plexError: any) {
-            // Pass through the nice error message we added to plexFetch
-            throw new Error(plexError.message);
-        }
-
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "Kunde inte ansluta";
-        return NextResponse.json({ error: message }, { status: 500 });
+        rawBody = await request.json();
+    } catch {
+        return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
+
+    const resolved = await resolveTestCredentials(parseTestConnectionBody(rawBody, normalizePlexUrl), {
+        isOwner,
+        lookupStoredToken: getServerToken,
+    });
+    if (!resolved.ok) {
+        return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const probe = await probePlexServer({ baseUrl: resolved.baseUrl, token: resolved.token });
+    if (!probe.ok) {
+        return NextResponse.json({ error: probe.message, reason: probe.reason }, { status: HTTP_BAD_GATEWAY });
+    }
+
+    return NextResponse.json({
+        success: true,
+        message: probe.friendlyName ? `Connected to ${probe.friendlyName}` : "Connection successful",
+        latencyMs: probe.latencyMs,
+        version: probe.version,
+    });
 }

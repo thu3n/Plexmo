@@ -1,30 +1,20 @@
 import { NextResponse } from "next/server";
 import { getAllHistory } from "@/lib/history";
-import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/jwt";
-import { validateApiKey } from "@/lib/api-auth";
-import { resolveScope, scopedServerIds } from "@/lib/authz";
+import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
+import { scopedServerIds } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-    // Auth Priority: 1. Session, 2. API Key (for 3rd party tools like Wrapperr)
-
-    // 1. Check Session
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
-    const sessionUser = token ? await verifyToken(token) : null;
-
-    // 2. Check API Key
-    const isApiKeyValid = validateApiKey(request);
-
-    // Require at least one valid auth method
-    if (!sessionUser && !isApiKeyValid) {
+    // Session first, then API key (for 3rd party tools like Wrapperr). The
+    // shared guard also drops revoked viewers and contains setup sessions.
+    const user = await authorizeApiKeyOrSession(request);
+    if (!user) {
         return NextResponse.json({ error: "Unauthorized: Invalid Session or API Key" }, { status: 401 });
     }
 
     // Opt-in viewer scoping (API keys are unscoped).
-    const allowedServerIds = sessionUser ? scopedServerIds(resolveScope(sessionUser)) : undefined;
+    const allowedServerIds = scopedServerIds(user.scope);
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId") || undefined;
@@ -61,12 +51,13 @@ export async function GET(request: Request) {
 
     // Enhance history entries by parsing meta_json
     const enhancedHistory = history.map(entry => {
-        let meta: any = {};
+        // Untrusted JSON blob: only scalar fields are read back out of it.
+        let meta: Record<string, string | number | undefined> = {};
         try {
             if (entry.meta_json) {
                 meta = JSON.parse(entry.meta_json);
             }
-        } catch (e) {
+        } catch {
             // ignore parse errors
         }
 

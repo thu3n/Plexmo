@@ -21,6 +21,7 @@ export function SettingsSection({
     contentClassName?: string;
 }) {
     const [isExpanded, setIsExpanded] = React.useState(false);
+    const descriptionId = React.useId();
     const shouldTruncate = description && description.length > 150;
 
     return (
@@ -35,6 +36,7 @@ export function SettingsSection({
                     {description && (
                         <div className="relative max-w-2xl">
                             <p
+                                id={descriptionId}
                                 className={clsx(
                                     "text-sm md:text-base text-white/50 leading-relaxed transition-all duration-300",
                                     !isExpanded && shouldTruncate ? "line-clamp-2" : ""
@@ -50,11 +52,15 @@ export function SettingsSection({
                             {shouldTruncate && (
                                 <div className={clsx("flex justify-center w-full", !isExpanded && "absolute bottom-0 z-10")}>
                                     <button
+                                        type="button"
                                         onClick={() => setIsExpanded(!isExpanded)}
-                                        className="text-white/50 hover:text-white transition-colors p-2 focus:outline-none"
+                                        className="text-white/50 hover:text-white transition-colors p-2 focus:outline-none focus-visible:text-white"
                                         title={isExpanded ? "Show less" : "Read more"}
+                                        aria-label={isExpanded ? "Show less" : "Read more"}
+                                        aria-expanded={isExpanded}
+                                        aria-controls={descriptionId}
                                     >
-                                        <ChevronDown className={clsx("w-5 h-5 transition-transform duration-300", isExpanded && "rotate-180")} />
+                                        <ChevronDown aria-hidden className={clsx("w-5 h-5 transition-transform duration-300", isExpanded && "rotate-180")} />
                                     </button>
                                 </div>
                             )}
@@ -69,6 +75,27 @@ export function SettingsSection({
     );
 }
 
+const CARD_BASE =
+    "rounded-2xl md:rounded-3xl border border-white/5 bg-white/[0.03] backdrop-blur-2xl p-5 md:p-8 relative overflow-hidden group transition-all duration-300";
+const CARD_CLICKABLE = "cursor-pointer hover:bg-white/[0.06] hover:border-white/10 hover:shadow-2xl hover:shadow-black/50";
+const CARD_HOVER_LIFT = { y: -2, transition: { duration: 0.2 } };
+
+function CardDecor({ children }: { children: React.ReactNode }) {
+    return (
+        <>
+            {/* Subtle glow effect on hover */}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+            {/* Inner gloss reflection */}
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-50" />
+
+            <div className="relative z-10 w-full">
+                {children}
+            </div>
+        </>
+    );
+}
+
 export function SettingsCard({
     children,
     className,
@@ -80,27 +107,25 @@ export function SettingsCard({
     onClick?: () => void;
     style?: React.CSSProperties;
 }) {
+    // Static cards (the vast majority) skip the motion wrapper entirely: it only
+    // ever animated the hover lift, which non-clickable cards never use.
+    if (!onClick) {
+        return (
+            <div className={clsx(CARD_BASE, className)} style={style}>
+                <CardDecor>{children}</CardDecor>
+            </div>
+        );
+    }
+
     return (
         <motion.div
-            whileHover={onClick ? { y: -2, transition: { duration: 0.2 } } : undefined}
+            whileHover={CARD_HOVER_LIFT}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            className={clsx(
-                "rounded-2xl md:rounded-3xl border border-white/5 bg-white/[0.03] backdrop-blur-2xl p-5 md:p-8 relative overflow-hidden group transition-all duration-300",
-                onClick && "cursor-pointer hover:bg-white/[0.06] hover:border-white/10 hover:shadow-2xl hover:shadow-black/50",
-                className
-            )}
+            className={clsx(CARD_BASE, CARD_CLICKABLE, className)}
             onClick={onClick}
             style={style}
         >
-            {/* Subtle glow effect on hover */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-            {/* Inner gloss reflection */}
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-50" />
-
-            <div className="relative z-10 w-full">
-                {children}
-            </div>
+            <CardDecor>{children}</CardDecor>
         </motion.div>
     );
 }

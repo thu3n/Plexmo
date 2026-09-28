@@ -2,6 +2,7 @@ import { createServer, listAllServers, getServerById, setServerOwner } from "@/l
 import { connectToServer } from "@/lib/plex-listener";
 import { backfillServerIdentities } from "@/lib/server-identity-backfill";
 import { normalizePlexUrl } from "@/lib/plex";
+import { parseServerColor } from "@/lib/serverColors";
 import { getPlexUser } from "@/lib/auth";
 import { reattributeOwnerAlias } from "@/lib/identity";
 import { authorizeApiKeyOrSession, isOwnerLike } from "@/lib/auth-guard";
@@ -35,7 +36,7 @@ export async function GET() {
     });
     return NextResponse.json({ servers: enriched }, { status: 200 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Ett okänt fel uppstod";
+    const message = error instanceof Error ? error.message : "Unknown error";
     Logger.error("List servers failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
     const baseUrl = normalizePlexUrl(rawUrl);
     const token = String(body.token || "").trim();
     const name = body.name ? String(body.name).trim() : undefined;
-    const color = body.color ? String(body.color).trim() : undefined;
+    const color = parseServerColor(body.color) ?? undefined;
 
     if (!baseUrl || !token) {
       return NextResponse.json(

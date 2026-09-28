@@ -1,9 +1,8 @@
 import { getDashboardSnapshot } from "@/lib/plex";
 import { getServerForDashboard, listInternalServers } from "@/lib/servers";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/jwt";
-import { resolveScope, canAccessServer, type AccessScope } from "@/lib/authz";
+import { authorizeApiKeyOrSession } from "@/lib/auth-guard";
+import { canAccessServer } from "@/lib/authz";
 import { Logger } from "@/lib/logger";
 import {
   getServerSnapshot,
@@ -59,13 +58,15 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const serverId = searchParams.get("serverId") ?? undefined;
 
-    // Opt-in viewer scoping: default scope is "all" (equal-access policy).
-    const cookieStore = await cookies();
-    const token = cookieStore.get("token")?.value;
-    const sessionUser = token ? await verifyToken(token) : null;
-    const scope: AccessScope | null = sessionUser ? resolveScope(sessionUser) : null;
+    // The shared guard applies revocation, setup/onboarding containment and
+    // viewer scoping; reading the cookie directly here skipped all three.
+    const user = await authorizeApiKeyOrSession(request);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { scope } = user;
 
-    if (serverId && scope && !canAccessServer(scope, serverId)) {
+    if (serverId && !canAccessServer(scope, serverId)) {
       return NextResponse.json({ error: "Forbidden: server outside your scope" }, { status: 403 });
     }
 
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
 
     const allServers = await listInternalServers();
     const servers =
-      scope && scope.serverIds !== "all"
+      scope.serverIds !== "all"
         ? allServers.filter((s) => canAccessServer(scope, s.id))
         : allServers;
 

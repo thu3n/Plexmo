@@ -43,3 +43,50 @@ export interface RuleInstance {
   serverCount?: number;
   assignments?: { userIds: string[]; serverIds: string[] };
 }
+
+/** Assignment-picker row from GET /api/rules/instances/[id]/users. */
+export interface RuleUserAssignment {
+  userId: string;
+  username: string;
+  email: string | null;
+  serverNames: string;
+  enabled: boolean;
+}
+
+/** Assignment-picker row from GET /api/rules/instances/[id]/servers. */
+export interface RuleServerAssignment {
+  serverId: string;
+  name: string;
+  enabled: boolean;
+}
+
+/** Row from POST /api/rules/analyze: a user whose limit this draft tightens. */
+export interface ImpactedUser {
+  username: string;
+  oldLimit: number | "Unlimited";
+  newLimit: number;
+}
+
+/** Row from POST /api/rules/debug: whether one rule applies to the user. */
+export interface RuleDebugResult {
+  rule: RuleInstance & { id: string };
+  applies: boolean;
+  reasons: { global: boolean; user: boolean; servers: string[] };
+}
+
+/** One enforcement event from GET /api/rules/instances/[id]/events. */
+export interface RuleEventEntry {
+  id: number;
+  userId: string;
+  username: string | null;
+  serverId: string | null;
+  serverName: string | null;
+  triggeredAt: string;
+  endedAt: string | null;
+  /** True once the rule actually terminated streams (vs. only logging). */
+  enforced: boolean;
+  count: number | null;
+  limit: number | null;
+  sessionTitle: string | null;
+  scheduleType: string | null;
+}

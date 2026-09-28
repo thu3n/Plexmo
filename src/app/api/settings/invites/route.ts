@@ -49,7 +49,9 @@ export async function POST(req: NextRequest) {
         }
         const label = typeof body.label === "string" ? body.label.slice(0, MAX_LABEL_LENGTH) : null;
         const serverIds =
-            type === "access" && Array.isArray(body.serverIds) ? body.serverIds.map(String) : null;
+            type === "access" && Array.isArray(body.serverIds)
+                ? body.serverIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+                : null;
 
         const { invite, rawToken } = createInvite({
             type,
@@ -79,8 +81,11 @@ export async function DELETE(req: NextRequest) {
         if (!id) {
             return NextResponse.json({ error: "ID is required" }, { status: 400 });
         }
-        revokeInvite(id);
-        return NextResponse.json({ success: true });
+        const result = revokeInvite(id);
+        if (!result.found) {
+            return NextResponse.json({ error: "Invite not found" }, { status: 404 });
+        }
+        return NextResponse.json({ success: true, removedAccessEmail: result.removedAccessEmail });
     } catch (error) {
         Logger.error("Failed to revoke invite:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

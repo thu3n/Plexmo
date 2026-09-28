@@ -1,9 +1,47 @@
-import { db } from "../../db";
 import { terminateSession } from "../../plex";
-import { sendSessionTerminatedNotification } from "../../discord";
+import { sendRuleViolationNotification } from "../../discord";
 import { Logger } from "../../logger";
 import type { PlexSession, PlexServerConfig } from "../../plex";
 import type { PersistedRuleInstance } from "../types";
+import { updateRuleEventDetails } from "../rules-assignments";
+import type { OpenRuleEvent } from "./context";
+
+/** The rule's own webhook selection; the single-id field predates the multi-select. */
+const ruleWebhookIds = (instance: PersistedRuleInstance): string[] =>
+  instance.discordWebhookIds?.length
+    ? instance.discordWebhookIds
+    : instance.discordWebhookId
+      ? [instance.discordWebhookId]
+      : [];
+
+/** Send the "rule_violation" notification; never throws into enforcement. */
+export const notifyRuleViolation = async (
+  session: PlexSession,
+  instance: PersistedRuleInstance,
+  reason: string
+): Promise<void> => {
+  try {
+    await sendRuleViolationNotification(session, instance.name, reason, ruleWebhookIds(instance));
+  } catch (err) {
+    Logger.error(`[Enforcement] Failed to send rule violation notification for "${instance.name}"`, err);
+  }
+};
+
+/**
+ * Flag-only rules (enforce off) notify once per rule event. The marker lives in
+ * the event's details JSON so a restart does not re-announce open events.
+ */
+export const notifyRuleFlagOnce = async (
+  session: PlexSession | undefined,
+  instance: PersistedRuleInstance,
+  event: OpenRuleEvent | undefined,
+  reason: string
+): Promise<void> => {
+  if (instance.settings.enforce || !session || !event || event.details.flagNotified === true) return;
+  event.details = { ...event.details, flagNotified: true };
+  updateRuleEventDetails(event.id, JSON.stringify(event.details));
+  await notifyRuleViolation(session, instance, reason);
+};
 
 /**
  * Terminate one session and fan out the rule's Discord notifications.
@@ -33,28 +71,7 @@ export const terminateWithNotify = async (
     return false;
   }
 
-  const webhookIds = instance.discordWebhookIds?.length
-    ? instance.discordWebhookIds
-    : instance.discordWebhookId
-      ? [instance.discordWebhookId]
-      : [];
-
-  for (const wid of webhookIds) {
-    try {
-      const webhook = db.prepare("SELECT url FROM discord_webhooks WHERE id = ?").get(wid) as
-        | { url: string }
-        | undefined;
-      if (webhook) {
-        await sendSessionTerminatedNotification(
-          session,
-          `Rule "${instance.name}": ${reason}`,
-          webhook.url
-        );
-      }
-    } catch (err) {
-      Logger.error(`[Enforcement] Failed to send Discord notification for webhook ${wid}`, err);
-    }
-  }
+  await notifyRuleViolation(session, instance, reason);
 
   return true;
 };

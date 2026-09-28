@@ -31,6 +31,8 @@ export interface ServerRow {
   ownerAccountId: string | null;
   /** Soft-delete marker. Archived servers keep their data and revive on re-add. */
   archivedAt: string | null;
+  /** Monitoring paused by the owner (v16). Unlike archivedAt the server stays configured; it is only skipped by polling, the listener and live fetches. */
+  disabledAt: string | null;
 }
 
 export interface ActivityHistoryRow {

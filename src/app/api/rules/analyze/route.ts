@@ -3,6 +3,7 @@ import { getRuleInstances, getRuleAssignmentIds } from "@/lib/rules";
 import { listLocalUsers } from "@/lib/users";
 import { requireOwner } from "@/lib/auth-guard";
 import { Logger } from "@/lib/logger";
+import type { ImpactedUser } from "@/features/rules/types";
 
 export async function POST(req: NextRequest) {
     if (!(await requireOwner(req))) {
@@ -25,9 +26,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Limit cannot be negative" }, { status: 400 });
         }
 
-        const draftIsEnforced = settings.enforce; // Only counting enforced rules? Or all? Usually all active rules count towards limit logic.
-        // Actually Plexmo logic: `checkAndLogViolations` uses `limit`. Enforcement is separate action.
-        // So we just check limits.
+        // Impact is about limits only: enforcement is a separate action, and
+        // checkAndLogViolations counts a rule's limit whether or not it enforces.
 
         // 1. Fetch all users (used for both the limit calc and the user->server map)
         const allUsers = listLocalUsers();
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 4. Calculate NEW Limits with Draft Rule
-        const impactedUsers: any[] = [];
+        const impactedUsers: ImpactedUser[] = [];
 
         // Determine Draft Scope
         const draftUserIds = new Set(assignments?.userIds || []);

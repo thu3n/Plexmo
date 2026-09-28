@@ -5,9 +5,11 @@ import { runRetentionSweepIfDue } from "@/lib/retention";
 import { prewarmStatsCacheIfDue } from "@/lib/stats/stats-prewarm";
 import { setServerSnapshot, markServerFailure } from "@/lib/dashboard-cache";
 import { sendSessionStartNotification, sendSessionStopNotification } from "./discord";
+import { onServerPollFailure, onServerPollSuccess } from "./notifications/monitor";
 import type { ServerRow } from "@/lib/db-types";
 import type { PlexSession } from "@/lib/plex";
 import { recordConcurrent } from "@/lib/stats/concurrent";
+import { markTaskRun } from "@/lib/task-runs";
 
 /** Sessions with no heartbeat for this long are flushed to history (server offline / listener gap). */
 const STALE_SESSION_MS = 2 * 60 * 60 * 1000;
@@ -38,12 +40,20 @@ export async function runCronJob(): Promise<{ success: boolean; results?: unknow
 
 async function runCronJobOnce() {
     try {
-        const servers = db.prepare<[], ServerRow>("SELECT * FROM servers WHERE archivedAt IS NULL").all();
+        const servers = db.prepare<[], ServerRow>("SELECT * FROM servers WHERE archivedAt IS NULL AND disabledAt IS NULL").all();
 
         const results = await Promise.allSettled(
             servers.map(async (server) => {
                 try {
-                    const snapshot = await getDashboardSnapshot(server);
+                    let snapshot: Awaited<ReturnType<typeof getDashboardSnapshot>>;
+                    try {
+                        snapshot = await getDashboardSnapshot(server);
+                    } catch (fetchErr) {
+                        // Only the Plex fetch counts toward server-down; a local
+                        // DB error below says nothing about reachability.
+                        onServerPollFailure(server, fetchErr instanceof Error ? fetchErr.message : String(fetchErr));
+                        throw fetchErr;
+                    }
                     setServerSnapshot(server.id, snapshot);
                     const { newSessions, endedSessions } = syncHistory(server, snapshot.sessions);
 
@@ -54,6 +64,8 @@ async function runCronJobOnce() {
                     if (endedSessions.length > 0) {
                         endedSessions.forEach(s => sendSessionStopNotification(s).catch(e => console.error("Failed to send stop notification", e)));
                     }
+                    // Queued after start/stop so a new session's start is sent before its transcode.
+                    onServerPollSuccess(server, snapshot.sessions, newSessions);
 
                     return { server: server.name, status: "ok", sessions: snapshot.sessions };
                 } catch (err) {
@@ -140,6 +152,7 @@ async function runCronJobOnce() {
             console.error("[Cron] Episode repair failed:", e);
         }
 
+        markTaskRun("session_poll"); // read by Settings → Jobs
         return {
             success: true,
             results: results.map(r => r.status === 'fulfilled' ? r.value : r.reason)

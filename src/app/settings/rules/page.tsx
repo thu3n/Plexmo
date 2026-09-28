@@ -1,92 +1,62 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
-import clsx from "clsx";
 import { useLanguage } from "@/components/LanguageContext";
-import RuleCard from "@/features/rules/components/settings/RuleCard";
+import { SettingsSection } from "@/features/settings/components/ui/SettingsShell";
+import RuleList from "@/features/rules/components/settings/RuleList";
 import RuleModal from "@/features/rules/components/settings/RuleModal";
 import RuleTypeSelectionModal from "@/features/rules/components/settings/RuleTypeSelectionModal";
 import RuleDebugger from "@/features/rules/components/settings/RuleDebugger";
-import { useRuleManagement } from "@/features/rules/hooks/useRuleManagement";
+import RuleEventsModal from "@/features/rules/components/settings/RuleEventsModal";
+import SegmentedTabs, { tabId, tabPanelId } from "@/features/rules/components/settings/ui/SegmentedTabs";
+import { useRuleManagement, type PersistedRule } from "@/features/rules/hooks/useRuleManagement";
+
+type RulesView = "list" | "debug";
+
+const VIEW_TABS = [
+    { value: "list" as const, label: "Rules List" },
+    { value: "debug" as const, label: "Debugger" },
+];
+
+const TABS_ID = "rules-view";
 
 export default function RulesPage() {
     const { t } = useLanguage();
-    const {
-        rules,
-        selectedRule,
-        isModalOpen,
-        isTypeSelectionOpen,
-        actions
-    } = useRuleManagement();
-
-    const [activeTab, setActiveTab] = useState<"list" | "debug">("list");
+    const { rules, isLoading, error, retry, editorTarget, isTypeSelectionOpen, actions } = useRuleManagement();
+    const [activeTab, setActiveTab] = useState<RulesView>("list");
+    const [historyRule, setHistoryRule] = useState<PersistedRule | null>(null);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-                        {t("rules.pageTitle")}
-                    </h1>
-                    <p className="text-white/40 mt-2 max-w-2xl">
-                        {t("rules.pageDesc")}
-                    </p>
-                </div>
+            <SettingsSection title={t("rules.pageTitle")} description={t("rules.pageDesc")}>
+                <SegmentedTabs
+                    tabs={VIEW_TABS}
+                    value={activeTab}
+                    onChange={setActiveTab}
+                    label="Rules view"
+                    idBase={TABS_ID}
+                    className="w-fit"
+                />
 
-                {/* Tabs */}
-                <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl">
-                    <button
-                        onClick={() => setActiveTab("list")}
-                        className={clsx(
-                            "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200",
-                            activeTab === "list" ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60 hover:bg-white/5"
-                        )}
-                    >
-                        Rules List
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("debug")}
-                        className={clsx(
-                            "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200",
-                            activeTab === "debug" ? "bg-white/10 text-white shadow-sm" : "text-white/40 hover:text-white/60 hover:bg-white/5"
-                        )}
-                    >
-                        Debugger
-                    </button>
+                <div role="tabpanel" id={tabPanelId(TABS_ID, activeTab)} aria-labelledby={tabId(TABS_ID, activeTab)}>
+                    {activeTab === "list" ? (
+                        <RuleList
+                            rules={rules}
+                            isLoading={isLoading}
+                            error={error}
+                            onRetry={retry}
+                            onCreate={actions.openCreateModal}
+                            onEdit={actions.openEditModal}
+                            onDelete={actions.deleteRule}
+                            onToggle={actions.toggleRule}
+                            onDuplicate={actions.duplicateRule}
+                            onShowHistory={setHistoryRule}
+                        />
+                    ) : (
+                        <RuleDebugger />
+                    )}
                 </div>
-            </div>
-
-            {activeTab === "list" ? (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-4">
-                    {/* Rule Cards */}
-                    {rules?.map((rule) => (
-                        <div key={rule.id} className="h-full">
-                            <RuleCard
-                                rule={rule as any}
-                                onEdit={actions.openEditModal}
-                                onDelete={actions.deleteRule}
-                                onToggle={actions.toggleRule}
-                            />
-                        </div>
-                    ))}
-
-                    {/* Add Rule Card */}
-                    <button
-                        onClick={actions.openCreateModal}
-                        className="group relative flex flex-col items-center justify-center min-h-[200px] rounded-3xl border border-dashed border-white/10 bg-white/5 transition-all hover:bg-white/10 hover:border-amber-500/50 hover:shadow-[0_0_30px_rgba(245,158,11,0.1)]"
-                    >
-                        <div className="p-4 rounded-full bg-amber-500/10 text-amber-500 mb-4 group-hover:scale-110 transition-transform">
-                            <Plus className="w-8 h-8" />
-                        </div>
-                        <span className="font-bold text-white group-hover:text-amber-400 transition-colors">
-                            Add New Rule
-                        </span>
-                    </button>
-                </div>
-            ) : (
-                <RuleDebugger />
-            )}
+            </SettingsSection>
 
             <RuleTypeSelectionModal
                 isOpen={isTypeSelectionOpen}
@@ -94,12 +64,9 @@ export default function RulesPage() {
                 onSelect={actions.selectRuleType}
             />
 
-            <RuleModal
-                rule={selectedRule}
-                isOpen={isModalOpen}
-                onClose={actions.closeModals}
-                onSave={actions.saveRule}
-            />
+            {editorTarget && <RuleModal target={editorTarget} onClose={actions.closeModals} onSave={actions.saveRule} />}
+
+            <RuleEventsModal rule={historyRule} onClose={() => setHistoryRule(null)} />
         </div>
     );
 }

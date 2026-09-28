@@ -23,13 +23,13 @@ describe("migration v15: history_start_user_index", () => {
         db.close();
     });
 
-    it("records version 15 as the latest applied migration", () => {
+    it("records version 15 as applied", () => {
         const db = createTestDb();
         const row = db
-            .prepare("SELECT MAX(version) as version FROM schema_migrations")
-            .get() as { version: number };
-        expect(row.version).toBe(15);
-        expect(LATEST_SCHEMA_VERSION).toBe(15);
+            .prepare("SELECT version FROM schema_migrations WHERE version = 15")
+            .get() as { version: number } | undefined;
+        expect(row?.version).toBe(15);
+        expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(15);
         db.close();
     });
 });

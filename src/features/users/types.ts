@@ -8,7 +8,20 @@ export type DirectoryUserRow = {
     serverId: string;
     serverName: string;
     isAdmin?: boolean;
-    isImported?: boolean;
+    /** Activity on THIS server (user_activity_summary bucket). */
+    plays?: number;
+    watchSeconds?: number;
+    /** Epoch ms of the latest play on this server; null if never played. */
+    lastPlayedAt?: number | null;
+};
+
+/** One server membership of a canonical identity, with that server's activity. */
+export type DirectoryMembership = {
+    serverId: string;
+    serverName: string;
+    plays: number;
+    watchSeconds: number;
+    lastPlayedAt: number | null;
 };
 
 /** One entry per canonical identity, memberships collapsed. */
@@ -20,6 +33,12 @@ export type DirectoryUser = {
     thumb: string | null;
     /** Admin on ANY server. */
     isAdmin: boolean;
-    isImported: boolean;
-    servers: { serverId: string; serverName: string }[];
+    servers: DirectoryMembership[];
+};
+
+/** Activity totals for a user, summed over the memberships in view. */
+export type UserActivity = {
+    plays: number;
+    watchSeconds: number;
+    lastPlayedAt: number | null;
 };

@@ -15,7 +15,8 @@ export async function backfillServerIdentities(): Promise<void> {
   const pending = db
     .prepare<[], ServerRow>(
       `SELECT * FROM servers
-       WHERE archivedAt IS NULL AND (machineIdentifier IS NULL OR ownerAccountId IS NULL)`
+       WHERE archivedAt IS NULL AND disabledAt IS NULL
+         AND (machineIdentifier IS NULL OR ownerAccountId IS NULL)`
     )
     .all();
 

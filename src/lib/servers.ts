@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { Logger } from "./logger";
 import type { ServerRow } from "./db-types";
+import { maskToken } from "./server-token-mask";
 
 /** Public alias for the raw `servers` row shape. */
 export type DbServer = ServerRow;
@@ -16,6 +17,8 @@ export type PublicServer = {
   maskedToken: string | null;
   color: string | null;
   archived?: boolean;
+  /** Monitoring paused (see migration v16) — configured, but not polled. */
+  disabled?: boolean;
   status?: "ok" | "unreachable";
   statusMessage?: string;
 };
@@ -31,7 +34,8 @@ export type ServerUpdateInput = {
   name?: string;
   baseUrl?: string;
   token?: string;
-  color?: string;
+  /** null clears the override back to the id-derived palette color. */
+  color?: string | null;
 };
 
 const sanitizeBaseUrl = (value: string) => value.replace(/\/+$/, "");
@@ -43,9 +47,10 @@ const toPublicServer = (server: DbServer): PublicServer => ({
   createdAt: server.createdAt,
   updatedAt: server.updatedAt,
   hasToken: Boolean(server.token),
-  maskedToken: server.token ? `${server.token.slice(0, 4)}…${server.token.slice(-2)}` : null,
+  maskedToken: server.token ? maskToken(server.token) : null,
   color: server.color || null,
   archived: Boolean(server.archivedAt),
+  disabled: Boolean(server.disabledAt),
 });
 
 const countServers = db.prepare<[], { count: number }>(
@@ -53,6 +58,12 @@ const countServers = db.prepare<[], { count: number }>(
 );
 const listStmt = db.prepare<[], DbServer>(
   "SELECT * FROM servers WHERE archivedAt IS NULL ORDER BY datetime(createdAt) ASC"
+);
+// Monitoring set: live AND not paused. Kept separate from listStmt because
+// countServers/listServers must still see paused servers (setup state, the
+// Settings list), while polling and live fetches must not.
+const listMonitoredStmt = db.prepare<[], DbServer>(
+  "SELECT * FROM servers WHERE archivedAt IS NULL AND disabledAt IS NULL ORDER BY datetime(createdAt) ASC"
 );
 const listArchivedStmt = db.prepare<[], DbServer>(
   "SELECT * FROM servers WHERE archivedAt IS NOT NULL ORDER BY datetime(createdAt) ASC"
@@ -69,17 +80,20 @@ const getByMachineIdStmt = db.prepare<[string], DbServer | undefined>(
   "SELECT * FROM servers WHERE machineIdentifier = ?"
 );
 const insertStmt = db.prepare<DbServer>(
-  `INSERT INTO servers (id, name, baseUrl, token, createdAt, updatedAt, color, machineIdentifier, ownerAccountId, archivedAt)
-   VALUES (@id, @name, @baseUrl, @token, @createdAt, @updatedAt, @color, @machineIdentifier, @ownerAccountId, @archivedAt)`
+  `INSERT INTO servers (id, name, baseUrl, token, createdAt, updatedAt, color, machineIdentifier, ownerAccountId, archivedAt, disabledAt)
+   VALUES (@id, @name, @baseUrl, @token, @createdAt, @updatedAt, @color, @machineIdentifier, @ownerAccountId, @archivedAt, @disabledAt)`
 );
 const updateStmt = db.prepare<DbServer>(
   "UPDATE servers SET name=@name, baseUrl=@baseUrl, token=@token, updatedAt=@updatedAt, color=@color WHERE id=@id"
 );
 const reviveStmt = db.prepare(
-  `UPDATE servers SET name=@name, baseUrl=@baseUrl, token=@token, updatedAt=@updatedAt, color=@color, archivedAt=NULL
+  `UPDATE servers SET name=@name, baseUrl=@baseUrl, token=@token, updatedAt=@updatedAt, color=@color, archivedAt=NULL, disabledAt=NULL
    WHERE id=@id`
 );
 const archiveStmt = db.prepare("UPDATE servers SET archivedAt = ?, updatedAt = ? WHERE id = ?");
+const setDisabledStmt = db.prepare<[string | null, string, string]>(
+  "UPDATE servers SET disabledAt = ?, updatedAt = ? WHERE id = ?"
+);
 
 /**
  * Fetch the Plex machineIdentifier for a server config. Best-effort: returns
@@ -122,6 +136,7 @@ export const ensureDefaultServer = async () => {
     machineIdentifier: null,
     ownerAccountId: null,
     archivedAt: null,
+    disabledAt: null,
   };
 
   insertStmt.run(server);
@@ -164,9 +179,10 @@ export const listAllServers = async (): Promise<PublicServer[]> => {
   return [...servers, ...archived, ...orphans];
 };
 
+/** Servers that should be polled/fetched live: live and not paused. */
 export const listInternalServers = async (): Promise<DbServer[]> => {
   await ensureDefaultServer();
-  return listStmt.all();
+  return listMonitoredStmt.all();
 };
 
 export const getServerForDashboard = async (id?: string): Promise<DbServer | null> => {
@@ -174,10 +190,11 @@ export const getServerForDashboard = async (id?: string): Promise<DbServer | nul
 
   if (id) {
     const server = getByIdStmt.get(id);
-    if (server) return server;
+    // A paused server must not be primed live through the dashboard.
+    if (server && !server.disabledAt) return server;
   }
 
-  const first = listStmt.get();
+  const first = listMonitoredStmt.get();
   return first ?? null;
 };
 
@@ -244,7 +261,7 @@ export const createServer = async (input: ServerInput): Promise<PublicServer> =>
     const existing = getByMachineIdStmt.get(machineIdentifier);
     if (existing) {
       if (!existing.archivedAt) {
-        throw new Error(`Den här Plex-servern är redan tillagd som "${existing.name}".`);
+        throw new Error(`This Plex server is already added as "${existing.name}".`);
       }
       reviveStmt.run({
         id: existing.id,
@@ -255,7 +272,16 @@ export const createServer = async (input: ServerInput): Promise<PublicServer> =>
         color: input.color || existing.color,
       });
       Logger.info(`[Servers] Revived archived server ${existing.id} (${name}).`);
-      return toPublicServer({ ...existing, name, baseUrl, token: input.token, updatedAt: now, archivedAt: null });
+      return toPublicServer({
+        ...existing,
+        name,
+        baseUrl,
+        token: input.token,
+        color: input.color || existing.color,
+        updatedAt: now,
+        archivedAt: null,
+        disabledAt: null,
+      });
     }
   }
 
@@ -270,6 +296,7 @@ export const createServer = async (input: ServerInput): Promise<PublicServer> =>
     machineIdentifier,
     ownerAccountId: null,
     archivedAt: null,
+    disabledAt: null,
   };
 
   insertStmt.run(server);
@@ -282,7 +309,7 @@ export const updateServer = async (
 ): Promise<PublicServer> => {
   const existing = getByIdStmt.get(id);
   if (!existing) {
-    throw new Error("Servern kunde inte hittas.");
+    throw new Error("Server not found.");
   }
 
   const now = new Date().toISOString();
@@ -297,6 +324,19 @@ export const updateServer = async (
 
   updateStmt.run(updated);
   return toPublicServer(updated);
+};
+
+/**
+ * Pause or resume monitoring. Returns the updated server, or null when the id
+ * is unknown or archived (a removed server cannot be paused — re-add revives it).
+ */
+export const setServerDisabled = (id: string, disabled: boolean): PublicServer | null => {
+  const existing = getByIdStmt.get(id);
+  if (!existing || existing.archivedAt) return null;
+  const now = new Date().toISOString();
+  const disabledAt = disabled ? existing.disabledAt ?? now : null;
+  setDisabledStmt.run(disabledAt, now, id);
+  return toPublicServer({ ...existing, disabledAt, updatedAt: now });
 };
 
 /**

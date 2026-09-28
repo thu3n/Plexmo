@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getWebhooks, createWebhook } from "@/lib/discord";
+import { getWebhooks, createWebhook, toPublicWebhook } from "@/lib/notifications/webhook-store";
+import { parseWebhookInput } from "@/lib/notifications/webhook-input";
 import { requireOwner } from "@/lib/auth-guard";
-import { isAllowedOutboundUrl } from "@/lib/outbound-url";
 import { Logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
@@ -10,9 +10,10 @@ export async function GET(request: Request) {
     }
 
     try {
-        const webhooks = getWebhooks();
-        return NextResponse.json({ webhooks });
+        // The URL is a credential: only a masked form is returned.
+        return NextResponse.json({ webhooks: getWebhooks().map(toPublicWebhook) });
     } catch (error) {
+        Logger.error("Failed to fetch webhooks:", error);
         return NextResponse.json({ error: "Failed to fetch webhooks" }, { status: 500 });
     }
 }
@@ -23,20 +24,11 @@ export async function POST(request: Request) {
     }
 
     try {
-        const body = await request.json();
-        const { name, url, events } = body;
-
-        if (!name || !url || !Array.isArray(events)) {
-            return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+        const parsed = parseWebhookInput(await request.json().catch(() => null), { requireUrl: true });
+        if (!parsed.ok) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
-        // Validate on the write path so an unfetchable target can never be
-        // persisted and fired repeatedly by the notification loop.
-        if (!isAllowedOutboundUrl(url)) {
-            return NextResponse.json({ error: "Invalid webhook URL" }, { status: 400 });
-        }
-
-        const id = createWebhook({ name, url, events });
-
+        const id = createWebhook({ ...parsed.input, url: parsed.input.url! });
         return NextResponse.json({ success: true, id });
     } catch (error) {
         Logger.error("Failed to create webhook:", error);

@@ -783,6 +783,20 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    // "Pause monitoring" for a server without removing it. Deliberately a
+    // separate marker from archivedAt: a disabled server stays configured and
+    // listed in Settings (and still counts toward setup/ownership), it is only
+    // skipped by cron polling, the WebSocket listener and live dashboard/rule
+    // fetches. NULL = monitored.
+    version: 16,
+    name: "server_disabled_flag",
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE servers ADD COLUMN disabledAt TEXT;
+      `);
+    },
+  },
 ];
 
 /** Highest schema version this build knows — a fully migrated DB sits here. */

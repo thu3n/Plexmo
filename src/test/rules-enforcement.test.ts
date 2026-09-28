@@ -18,6 +18,7 @@ vi.mock("@/lib/plex", async () => {
 
 vi.mock("@/lib/discord", () => ({
   sendSessionTerminatedNotification: vi.fn().mockResolvedValue(undefined),
+  sendRuleViolationNotification: vi.fn().mockResolvedValue(undefined),
   sendSessionStartNotification: vi.fn().mockResolvedValue(undefined),
   sendSessionStopNotification: vi.fn().mockResolvedValue(undefined),
 }));
@@ -25,6 +26,7 @@ vi.mock("@/lib/discord", () => ({
 import { db } from "@/lib/db";
 import { terminateSession } from "@/lib/plex";
 import { checkAndLogViolations } from "@/lib/rules";
+import { sendRuleViolationNotification } from "@/lib/discord";
 
 const SRV_A = "srv-a";
 const SRV_B = "srv-b";
@@ -266,5 +268,41 @@ describe("kill_paused_streams — per-stream identity", () => {
     expect(terminateMock).toHaveBeenCalledTimes(1);
     const [terminatedId] = terminateMock.mock.calls[0];
     expect(terminatedId).toBe(paused.sessionId);
+  });
+});
+
+describe("rule violation notifications", () => {
+  const notifyMock = vi.mocked(sendRuleViolationNotification);
+
+  it("notifies a flag-only rule once per violation, not on every poll", async () => {
+    notifyMock.mockClear();
+    createRule("flag-1", "max_concurrent_streams", { limit: 1, enforce: false, kill_all: false, message: "" });
+    const sessions = [makeSession({ serverId: SRV_A }), makeSession({ serverId: SRV_B })];
+
+    await checkAndLogViolations(sessions);
+    await checkAndLogViolations(sessions);
+    await checkAndLogViolations(sessions);
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    expect(notifyMock.mock.calls[0][1]).toBe("flag-1");
+  });
+
+  it("notifies enforced terminations through the rule's own webhooks", async () => {
+    notifyMock.mockClear();
+    createRule("enforce-n", "max_concurrent_streams", { limit: 1, enforce: true, kill_all: false, message: "Too many" });
+    db.prepare("UPDATE rule_instances SET discordWebhookIds = ? WHERE id = ?").run(JSON.stringify(["wh-1"]), "enforce-n");
+    const a = makeSession({ serverId: SRV_A });
+    const b = makeSession({ serverId: SRV_B });
+    storeActive(a, 1_000);
+    storeActive(b, 2_000);
+
+    await checkAndLogViolations([a, b]);
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    const [session, ruleName, reason, webhookIds] = notifyMock.mock.calls[0];
+    expect(session.id).toBe(b.id);
+    expect(ruleName).toBe("enforce-n");
+    expect(reason).toContain("Too many");
+    expect(webhookIds).toEqual(["wh-1"]);
   });
 });

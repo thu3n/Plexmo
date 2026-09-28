@@ -1,7 +1,7 @@
-import clsx from "clsx";
 import { motion } from "framer-motion";
 import { ShieldAlert } from "lucide-react";
 import type { RuleInstance } from "@/features/rules/types";
+import RuleSwitch from "../ui/RuleSwitch";
 
 interface EnforcementFormProps {
     formData: RuleInstance;
@@ -38,12 +38,12 @@ export default function EnforcementForm({ formData, setFormData }: EnforcementFo
                                 : 'Automatically kill streams exceeding limit'}
                         </div>
                     </div>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <div className={clsx("w-10 h-6 rounded-full transition-colors relative shrink-0", formData.settings.enforce ? "bg-amber-500" : "bg-white/10")}>
-                            <div className={clsx("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform", formData.settings.enforce ? "translate-x-4" : "translate-x-0")} />
-                        </div>
-                        <input type="checkbox" className="hidden" checked={formData.settings.enforce} onChange={e => setFormData({ ...formData, settings: { ...formData.settings, enforce: e.target.checked } })} />
-                    </label>
+                    <RuleSwitch
+                        checked={!!formData.settings.enforce}
+                        onChange={(on) => setFormData({ ...formData, settings: { ...formData.settings, enforce: on } })}
+                        label="Enforce rule by killing streams"
+                        activeClassName="bg-amber-500"
+                    />
                 </div>
 
                 {formData.type === "max_concurrent_streams" && (
@@ -52,12 +52,12 @@ export default function EnforcementForm({ formData, setFormData }: EnforcementFo
                             <div className="font-medium text-white text-sm">Exclude Same IP</div>
                             <div className="text-xs text-white/40 mt-0.5">Allow multiple streams from the same public IP (e.g. same household) without penalty</div>
                         </div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <div className={clsx("w-10 h-6 rounded-full transition-colors relative shrink-0", formData.settings.exclude_same_ip ? "bg-emerald-500" : "bg-white/10")}>
-                                <div className={clsx("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform", formData.settings.exclude_same_ip ? "translate-x-4" : "translate-x-0")} />
-                            </div>
-                            <input type="checkbox" className="hidden" checked={!!formData.settings.exclude_same_ip} onChange={e => setFormData({ ...formData, settings: { ...formData.settings, exclude_same_ip: e.target.checked } })} />
-                        </label>
+                        <RuleSwitch
+                            checked={!!formData.settings.exclude_same_ip}
+                            onChange={(on) => setFormData({ ...formData, settings: { ...formData.settings, exclude_same_ip: on } })}
+                            label="Exclude same IP"
+                            activeClassName="bg-emerald-500"
+                        />
                     </div>
                 )}
             </div>
@@ -69,12 +69,12 @@ export default function EnforcementForm({ formData, setFormData }: EnforcementFo
                             <div className="font-medium text-white text-sm">Kill All Streams</div>
                             <div className="text-xs text-white/40 mt-0.5">Kill ALL user streams on violation instead of just the newest</div>
                         </div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <div className={clsx("w-10 h-6 rounded-full transition-colors relative shrink-0", formData.settings.kill_all ? "bg-red-500" : "bg-white/10")}>
-                                <div className={clsx("absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform", formData.settings.kill_all ? "translate-x-4" : "translate-x-0")} />
-                            </div>
-                            <input type="checkbox" className="hidden" checked={formData.settings.kill_all} onChange={e => setFormData({ ...formData, settings: { ...formData.settings, kill_all: e.target.checked } })} />
-                        </label>
+                        <RuleSwitch
+                            checked={!!formData.settings.kill_all}
+                            onChange={(on) => setFormData({ ...formData, settings: { ...formData.settings, kill_all: on } })}
+                            label="Kill all streams"
+                            activeClassName="bg-red-500"
+                        />
                     </div>
 
                     <div>
@@ -100,7 +100,7 @@ export default function EnforcementForm({ formData, setFormData }: EnforcementFo
                             placeholder="Stream paused for too long"
                         />
                         <p className="text-xs text-white/40 mt-1.5">
-                            You can use <code className="px-1.5 py-0.5 bg-white/10 rounded text-amber-400">$time</code> to show the configured pause duration (e.g. "3 minuter")
+                            You can use <code className="px-1.5 py-0.5 bg-white/10 rounded text-amber-400">$time</code> to show the configured pause duration (e.g. &ldquo;3 minuter&rdquo;)
                         </p>
                     </div>
                 </motion.div>

@@ -147,6 +147,7 @@ export function UserRulesTab({ username }: { username: string }) {
                 isOpen={!!selectedRule}
                 onClose={() => setSelectedRule(null)}
                 ruleName={allRules.find(r => r.id === selectedRule)?.name || selectedRule || ""}
+                ruleType={allRules.find(r => r.id === selectedRule)?.type}
                 history={filteredHistory}
             />
         </div>

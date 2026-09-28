@@ -22,8 +22,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
         return NextResponse.json({ job });
 
-    } catch (error: any) {
+    } catch (error) {
         Logger.error("Get Job Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Failed to load job" }, { status: 500 });
     }
 }
