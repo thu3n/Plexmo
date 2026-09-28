@@ -1,0 +1,107 @@
+"use client";
+
+import { ArrowDown, ArrowUp, Clock, Play, Shuffle, User, Users, type LucideIcon } from "lucide-react";
+import { Skeleton } from "@/components/Skeleton";
+import { PANEL_CLASS } from "./Panel";
+import { Sparkline } from "./Sparkline";
+import { formatCount, formatHours, percentOf, trendPercent } from "../lib/overview-math";
+import { useDecisionShare, useKpiData, usePlaysSeries } from "../hooks/useStatsV2";
+
+type Kpi = {
+    label: string;
+    value: string;
+    icon: LucideIcon;
+    iconBg: string;
+    trend?: number | null;
+    spark?: number[];
+    bar?: { percent: number; color: string };
+};
+
+function KpiCard({ kpi, periodLabel }: { kpi: Kpi; periodLabel: string }) {
+    const Icon = kpi.icon;
+    return (
+        <div className={`${PANEL_CLASS} flex items-start gap-3 p-3.5`}>
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${kpi.iconBg}`}>
+                <Icon className="h-4 w-4 text-white" />
+            </span>
+            <div className="min-w-0 flex-1">
+                <p className="text-[13px] text-white/80">{kpi.label}</p>
+                <div className="flex items-end justify-between gap-2">
+                    <p className="text-[22px] font-semibold leading-tight text-white">{kpi.value}</p>
+                    {kpi.spark && kpi.spark.length > 1 && <Sparkline values={kpi.spark} />}
+                </div>
+                {kpi.trend !== undefined && kpi.trend !== null && (
+                    <p className="mt-1 flex items-center gap-1 text-[10px] text-white/55">
+                        <span className={kpi.trend >= 0 ? "flex items-center text-emerald-400" : "flex items-center text-rose-400"}>
+                            {kpi.trend >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                            {Math.abs(kpi.trend)}%
+                        </span>
+                        vs. previous {periodLabel}
+                    </p>
+                )}
+                {kpi.bar && (
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-white/10">
+                        <div className="h-full rounded-full" style={{ width: `${kpi.bar.percent}%`, backgroundColor: kpi.bar.color }} />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+export function KpiRow({ days, serverId, periodLabel }: { days: number; serverId: string | null; periodLabel: string }) {
+    const { current, doubled } = useKpiData(days, serverId);
+    const series = usePlaysSeries(days, serverId);
+    const share = useDecisionShare(days, serverId);
+
+    if (!current) {
+        return (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-xl" />)}
+            </div>
+        );
+    }
+
+    const shareTotal = share.reduce((sum, r) => sum + r.total, 0);
+    const shareOf = (bucket: string) => percentOf(share.find((r) => r.bucket === bucket)?.total ?? 0, shareTotal);
+
+    const kpis: Kpi[] = [
+        {
+            label: "Plays",
+            value: formatCount(current.totalPlays),
+            icon: Play,
+            iconBg: "bg-[#2f6fec]",
+            trend: doubled ? trendPercent(current.totalPlays, doubled.totalPlays) : null,
+            spark: series?.map((r) => r.total),
+        },
+        {
+            label: "Watch time",
+            value: formatHours(current.totalSeconds),
+            icon: Clock,
+            iconBg: "bg-[#138a5e]",
+            trend: doubled ? trendPercent(current.totalSeconds, doubled.totalSeconds) : null,
+        },
+        { label: "Users", value: formatCount(current.uniqueUsers), icon: User, iconBg: "bg-[#3a5bbf]" },
+        { label: "Peak concurrent", value: formatCount(current.peak.window.count), icon: Users, iconBg: "bg-[#3b4a6b]" },
+        {
+            label: "Direct play",
+            value: `${shareOf("direct play")}%`,
+            icon: Play,
+            iconBg: "bg-[#17b26a]",
+            bar: { percent: shareOf("direct play"), color: "#22c55e" },
+        },
+        {
+            label: "Transcode",
+            value: `${shareOf("transcode")}%`,
+            icon: Shuffle,
+            iconBg: "bg-[#7c3aed]",
+            bar: { percent: shareOf("transcode"), color: "#8b5cf6" },
+        },
+    ];
+
+    return (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            {kpis.map((kpi) => <KpiCard key={kpi.label} kpi={kpi} periodLabel={periodLabel} />)}
+        </div>
+    );
+}

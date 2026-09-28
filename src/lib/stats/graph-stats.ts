@@ -15,6 +15,9 @@ export const GRAPH_TYPES = [
   "plays_by_platform",
   "plays_by_resolution",
   "transcode_share",
+  "plays_by_dow_hour",
+  "plays_by_device",
+  "transcode_details",
 ] as const;
 
 export type GraphType = (typeof GRAPH_TYPES)[number];
@@ -108,6 +111,55 @@ export const getGraphData = (type: GraphType, params: GraphParams) => {
         GROUP BY bucket
         ORDER BY total DESC
       `).all(...args);
+    }
+    case "plays_by_dow_hour":
+      // "<%w>-<%H>", e.g. "1-20" = Monday 20:00 — one cell of the weekday × hour heatmap.
+      return bucketQuery(
+        `strftime('%w', datetime(h.startTime / 1000, 'unixepoch', 'localtime')) || '-' ||
+         strftime('%H', datetime(h.startTime / 1000, 'unixepoch', 'localtime'))`,
+        params
+      );
+    case "plays_by_device": {
+      const { where, args } = buildFilter(params);
+      return db.prepare(`
+        SELECT h.device as bucket, COUNT(*) as total,
+          SUM(COALESCE(h.play_duration, h.duration)) as duration
+        FROM activity_history h
+        WHERE ${where} AND h.device IS NOT NULL AND h.device != ''
+        GROUP BY h.device
+        ORDER BY total DESC
+        LIMIT 10
+      `).all(...args);
+    }
+    case "transcode_details": {
+      // Per-stream-component transcode counts; codecs aren't fact columns, so the
+      // only "from → to" detail we can report honestly is the resolution change.
+      const { where, args } = buildFilter(params);
+      const counts = db.prepare(`
+        SELECT
+          SUM(CASE WHEN h.video_decision = 'transcode' THEN 1 ELSE 0 END) as video,
+          SUM(CASE WHEN h.audio_decision = 'transcode' THEN 1 ELSE 0 END) as audio,
+          SUM(CASE WHEN h.stream_video_resolution IS NOT NULL
+                    AND h.video_resolution IS NOT NULL
+                    AND h.stream_video_resolution != h.video_resolution THEN 1 ELSE 0 END) as resolution
+        FROM activity_history h
+        WHERE ${where}
+      `).get(...args) as { video: number | null; audio: number | null; resolution: number | null };
+      const topResolution = db.prepare(`
+        SELECT h.video_resolution || ' → ' || h.stream_video_resolution as detail, COUNT(*) as total
+        FROM activity_history h
+        WHERE ${where}
+          AND h.stream_video_resolution IS NOT NULL AND h.video_resolution IS NOT NULL
+          AND h.stream_video_resolution != h.video_resolution
+        GROUP BY detail
+        ORDER BY total DESC
+        LIMIT 1
+      `).get(...args) as { detail: string } | undefined;
+      return [
+        { bucket: "video", total: counts.video ?? 0, detail: null },
+        { bucket: "audio", total: counts.audio ?? 0, detail: null },
+        { bucket: "resolution", total: counts.resolution ?? 0, detail: topResolution?.detail ?? null },
+      ];
     }
     case "transcode_share": {
       const { where, args } = buildFilter(params);
