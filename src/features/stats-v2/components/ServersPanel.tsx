@@ -64,7 +64,6 @@ function ServerTile({
     return (
         <div className={`${INSET_CLASS} p-4`}>
             <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white" title={server.name}>{server.name}</span>
                 <span
                     title={live?.message ?? undefined}
