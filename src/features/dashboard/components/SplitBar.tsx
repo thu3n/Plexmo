@@ -6,7 +6,7 @@ export type SplitSegment = {
     value: number;
     /** Shown in the legend; defaults to the raw value. */
     display?: string;
-    /** Tailwind bg-* for the bar, text-* for the legend accent. */
+    /** Tailwind bg-* for the bar, text-* for the legend label (the colour ties it to its segment). */
     barClass: string;
     textClass: string;
     icon?: ReactNode;
@@ -55,7 +55,7 @@ export function SplitBar({ segments, emptyLabel }: { segments: SplitSegment[]; e
                     return (
                         <div key={s.key} className={`flex min-w-0 gap-1 ${itemLayout}`}>
                             <span className={`flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${s.textClass}`}>
-                                {s.icon ?? <span className={`h-2 w-2 shrink-0 rounded-full ${s.barClass}`} />}
+                                {s.icon}
                                 <span className="truncate">{s.label}</span>
                             </span>
                             <span className="flex items-baseline gap-1.5 whitespace-nowrap">
