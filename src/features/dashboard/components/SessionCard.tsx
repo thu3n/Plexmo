@@ -10,6 +10,13 @@ import { SessionElapsedTime, SessionProgressBar } from "./SessionProgress";
 import { SessionDetailRows } from "./SessionDetailRows";
 import { useSessionActions } from "../hooks/useSessionActions";
 
+// The poster column is 168x252 CSS px. Requesting 3x that from the PMS photo
+// transcoder keeps it sharp on high-DPR screens, while sparing the browser a
+// ~6x downscale of the full-size original — inside the card's composited
+// (transformed) layer that downscale is coarsely filtered and looks pixelated.
+const POSTER_SRC_WIDTH = 504;
+const POSTER_SRC_HEIGHT = 756;
+
 const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: PlexSession; serverColor?: string; isLimitExceeded?: boolean }) => {
     const { stopStream, isTerminating } = useSessionActions();
 
@@ -37,7 +44,7 @@ const SessionCardInner = ({ session, serverColor, isLimitExceeded }: { session: 
     };
 
     const posterSrc = session.thumb
-        ? `/api/image?path=${encodeURIComponent(session.thumb)}&serverId=${session.serverId || ""}`
+        ? `/api/image?path=${encodeURIComponent(session.thumb)}&serverId=${session.serverId || ""}&w=${POSTER_SRC_WIDTH}&h=${POSTER_SRC_HEIGHT}`
         : null;
 
     return (
