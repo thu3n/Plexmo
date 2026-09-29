@@ -24,6 +24,22 @@ export const formatCount = (n: number): string => Math.round(n).toLocaleString("
 export const formatHours = (seconds: number): string =>
     `${formatCount(seconds / SECONDS_PER_HOUR)}h`;
 
+const HOURS_PER_DAY = 24;
+const DAYS_PER_YEAR = 365;
+/** Below this many hours a raw hour count is still easy to picture. */
+const WATCH_TIME_HOURS_LIMIT = 100;
+/** Beyond this many days, years read better than a four-digit day count. */
+const WATCH_TIME_DAYS_LIMIT = 2 * DAYS_PER_YEAR;
+
+/** Human-scale watch time: "57h", "412 days", "6.3 years" — 55,004h means little at a glance. */
+export const formatWatchTime = (seconds: number): string => {
+    const hours = seconds / SECONDS_PER_HOUR;
+    if (hours < WATCH_TIME_HOURS_LIMIT) return `${Math.round(hours)}h`;
+    const days = hours / HOURS_PER_DAY;
+    if (days < WATCH_TIME_DAYS_LIMIT) return `${formatCount(days)} days`;
+    return `${(days / DAYS_PER_YEAR).toFixed(1)} years`;
+};
+
 export const percentOf = (part: number, total: number): number =>
     total > 0 ? Math.round((part / total) * 100) : 0;
 

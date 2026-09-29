@@ -4,9 +4,9 @@ import Link from "next/link";
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { LINK_CLASS, PANEL_CLASS } from "../lib/theme";
 
-/** Navy card surface shared by every v2 panel. */
-export const PANEL_CLASS = "rounded-xl border border-[#1b2742] bg-[#0f1729] shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]";
+export { PANEL_CLASS };
 
 export function Panel({
     id,
@@ -25,7 +25,7 @@ export function Panel({
         <section id={id} className={clsx(PANEL_CLASS, "scroll-mt-24 p-5", className)}>
             {(title || action) && (
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    {title && <h2 className="whitespace-nowrap text-base font-semibold text-white">{title}</h2>}
+                    {title && <h2 className="whitespace-nowrap text-base font-semibold text-white/90">{title}</h2>}
                     {action}
                 </div>
             )}
@@ -38,7 +38,7 @@ export function ViewAll({ href, label = "View all" }: { href: string; label?: st
     return (
         <Link
             href={href}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[#5b8cff] hover:text-[#8aaeff]"
+            className={`inline-flex items-center gap-1 text-xs font-medium ${LINK_CLASS}`}
         >
             {label}
             <ArrowRight className="h-3 w-3" />
@@ -53,7 +53,7 @@ export function ExpandToggle({ expanded, onToggle }: { expanded: boolean; onTogg
             type="button"
             onClick={onToggle}
             aria-expanded={expanded}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[#5b8cff] hover:text-[#8aaeff]"
+            className={`inline-flex items-center gap-1 text-xs font-medium ${LINK_CLASS}`}
         >
             {expanded ? "Show less" : "View all"}
             <ArrowRight className={clsx("h-3 w-3 transition-transform", expanded && "-rotate-90")} />
@@ -80,17 +80,17 @@ export function Tabs<T extends string>({
     size?: "sm" | "md";
 }) {
     return (
-        <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[#1b2742] bg-[#0b1222] p-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-white/5 bg-white/5 p-0.5">
             {options.map((opt) => (
                 <button
                     key={opt.key}
                     type="button"
                     onClick={() => onChange(opt.key)}
                     className={clsx(
-                        "whitespace-nowrap rounded-md font-medium transition-colors",
+                        "whitespace-nowrap rounded-full font-medium transition-colors",
                         size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
                         opt.key === value
-                            ? "bg-[#1f4fd1] text-white"
+                            ? "bg-white text-black"
                             : "text-white/60 hover:text-white",
                     )}
                 >

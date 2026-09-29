@@ -28,6 +28,8 @@ export function RankedList({
     columns,
     unit,
     skeletonRows = 8,
+    emptyText,
+    positive = false,
 }: {
     rows: RankedRow[] | undefined;
     /** Value column headers; omitted for single-value lists that use `unit`. */
@@ -35,9 +37,12 @@ export function RankedList({
     /** Caption under a single value (e.g. "users"). */
     unit?: string;
     skeletonRows?: number;
+    emptyText?: string;
+    /** Growth lists: the lead value renders as a gain (emerald) rather than a plain total. */
+    positive?: boolean;
 }) {
     if (!rows) return <SkeletonRows count={skeletonRows} rowClassName="h-10 rounded-lg" />;
-    if (rows.length === 0) return <EmptyRow />;
+    if (rows.length === 0) return <EmptyRow text={emptyText} />;
 
     const max = Math.max(...rows.map((r) => r.magnitude), 1);
     const valueCols = columns?.length ?? 1;
@@ -63,7 +68,7 @@ export function RankedList({
                             {row.icon}
                             <div className="min-w-0 flex-1">
                                 {row.href ? (
-                                    <Link href={row.href} className="block truncate text-[13px] font-medium text-white hover:text-[#8aaeff]">
+                                    <Link href={row.href} className="block truncate text-[13px] font-medium text-white hover:text-amber-300">
                                         {row.label}
                                     </Link>
                                 ) : (
@@ -72,7 +77,7 @@ export function RankedList({
                                 {row.sub && <p className="truncate text-[11px] text-white/55">{row.sub}</p>}
                                 <div className="mt-1.5 h-[3px] rounded-full bg-white/[0.06]">
                                     <div
-                                        className="h-full rounded-full bg-[#3987e5]"
+                                        className="h-full rounded-full bg-amber-400/80"
                                         style={{ width: `${Math.max(2, (row.magnitude / max) * 100)}%` }}
                                     />
                                 </div>
@@ -80,7 +85,7 @@ export function RankedList({
                         </div>
                         {row.values.map((v, vi) => (
                             <div key={vi} className="text-right">
-                                <p className={clsx("text-[13px] tabular-nums", vi === 0 ? "font-semibold text-white" : "text-white/70")}>{v}</p>
+                                <p className={clsx("text-[13px] tabular-nums", vi === 0 ? clsx("font-semibold", positive ? "text-emerald-400" : "text-white") : "text-white/70")}>{v}</p>
                                 {unit && valueCols === 1 && <p className="text-[10px] text-white/45">{unit}</p>}
                             </div>
                         ))}

@@ -35,11 +35,10 @@ const formatCell: Record<Metric, (v: number) => string> = {
 };
 
 /**
- * One-hue sequential blue ramp (dataviz reference palette, steps 600→100),
- * validated on the #0f1729 panel surface: monotone lightness, visible gaps,
- * darkest step still clears 2:1. Index 0 = empty cell.
+ * One-hue sequential amber ramp (the app accent) with monotone lightness so
+ * order reads without a legend; index 0 = empty cell, a faint glass tint.
  */
-const RAMP = ["#16223b", "#184f95", "#256abf", "#3987e5", "#6da7ec", "#9ec5f4", "#cde2fb"];
+const RAMP = ["rgba(255,255,255,0.04)", "#3d2c0b", "#65450c", "#9a650f", "#d18d14", "#f6b72b", "#fde68a"];
 const LEVELS = RAMP.length - 1;
 const HOUR_LABEL_EVERY = 3;
 
@@ -70,7 +69,7 @@ export function ActivityHeatmap({ days, serverId }: { days: number; serverId: st
                                             key={hour}
                                             onMouseEnter={() => setHover({ day: di, hour, value })}
                                             title={`${HEATMAP_WEEKDAYS[di].label} ${String(hour).padStart(2, "0")}:00 · ${formatCell[metric](value)}`}
-                                            className="h-[22px] rounded-[3px] transition-[outline] hover:outline hover:outline-2 hover:outline-white/70"
+                                            className="h-[22px] rounded-[3px] transition-[outline] hover:outline hover:outline-2 hover:outline-white/80"
                                             style={{ backgroundColor: RAMP[levelFor(value, thresholds)] }}
                                         />
                                     ))}

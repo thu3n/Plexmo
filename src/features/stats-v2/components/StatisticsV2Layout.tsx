@@ -10,7 +10,8 @@ import { StreamDecisionPanel } from "./StreamDecisionPanel";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { TopMediaPanel } from "./TopMediaPanel";
 import { StreamQualityPanel, TranscodingDetailsPanel } from "./PlaybackPanels";
-import { DevicesPanel, TopPlatformsPanel, TopUsersPanel } from "./PeoplePanels";
+import { ClientsPanel, TopUsersPanel } from "./PeoplePanels";
+import { TrendingPanel } from "./TrendingPanel";
 import { ServersPanel } from "./ServersPanel";
 import { formatDateRange } from "../lib/overview-math";
 import { useActivitySeries, useServers } from "../hooks/useStatsV2";
@@ -44,9 +45,17 @@ export function StatisticsV2Layout() {
     const periodLabel = STATS_PERIODS.find((p) => p.key === period)?.label ?? period;
 
     return (
-        <div className="min-h-dvh bg-[#0a1120] text-white">
-            <main className="px-4 pb-dock sm:px-6 lg:pb-8">
-                <div className="mx-auto max-w-[1600px]">
+        <div className="relative min-h-dvh text-white">
+            {/* Same background orbs as the dashboard (radial gradients, not blur
+                filters — see the iOS note in src/app/page.tsx). */}
+            <div className="pointer-events-none fixed inset-0 z-0">
+                <div className="absolute left-[-10%] top-[-10%] h-[500px] w-[500px] rounded-full bg-[radial-gradient(closest-side,rgba(99,102,241,0.10),transparent)]" />
+                <div className="absolute right-[-10%] top-0 h-[600px] w-[600px] rounded-full bg-[radial-gradient(closest-side,rgba(168,85,247,0.10),transparent)]" />
+                <div className="absolute bottom-[-10%] left-[20%] h-[500px] w-[500px] rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,0.05),transparent)]" />
+            </div>
+
+            <main className="relative z-10 mx-auto max-w-[1600px] px-4 sm:px-6 main-safe-top pb-dock lg:pb-8">
+                <div>
                     <OverviewHeader
                         period={period}
                         onPeriodChange={setPeriod}
@@ -71,16 +80,17 @@ export function StatisticsV2Layout() {
                             <div className="md:col-span-2 [&>section]:h-full"><TranscodingDetailsPanel {...scope} /></div>
                         </div>
 
-                    <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12 xl:grid-cols-3">
+                        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12 xl:grid-cols-3">
                             <TopMediaPanel type="movie" {...scope} />
                             <TopMediaPanel type="show" {...scope} />
-                            <div className="md:col-span-2 xl:col-span-1 [&>section]:h-full"><TopMediaPanel type="episode" {...scope} /></div>
+                            {/* Replaces Top episodes, which was mostly Top shows again (one
+                                series filled half of it) — growth is the list that changes. */}
+                            <div className="md:col-span-2 xl:col-span-1 [&>section]:h-full"><TrendingPanel {...scope} /></div>
                         </div>
 
-                        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12 xl:grid-cols-3">
+                        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12">
                             <TopUsersPanel {...scope} />
-                            <TopPlatformsPanel {...scope} />
-                            <div className="md:col-span-2 xl:col-span-1 [&>section]:h-full"><DevicesPanel {...scope} /></div>
+                            <ClientsPanel {...scope} />
                         </div>
 
                         <div className="min-w-0 xl:col-span-12"><ServersPanel {...scope} /></div>

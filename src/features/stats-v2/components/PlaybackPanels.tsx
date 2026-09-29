@@ -9,7 +9,8 @@ import { useResolutionShare, useTranscodeDetails, type TranscodeDetailRow } from
 type Scope = { days: number; serverId: string | null };
 
 /** One-hue ramp, brightest = highest resolution — order carries meaning, not identity. */
-const RESOLUTION_COLORS: Record<string, string> = { "4K": "#9ec5f4", "1080p": "#6da7ec", "720p": "#3987e5", SD: "#256abf" };
+// Tailwind amber-200 / 400 / 600 / 700.
+const RESOLUTION_COLORS: Record<string, string> = { "4K": "#fde68a", "1080p": "#fbbf24", "720p": "#d97706", SD: "#b45309" };
 
 export function StreamQualityPanel({ days, serverId }: Scope) {
     const rows = useResolutionShare(days, serverId);
@@ -35,7 +36,7 @@ export function StreamQualityPanel({ days, serverId }: Scope) {
                                     </span>
                                     <span className="text-xs tabular-nums text-white/55">{formatCount(row.total)} streams</span>
                                 </div>
-                                <div className="mt-1.5 h-2 rounded-full bg-[#1b2742]">
+                                <div className="mt-1.5 h-2 rounded-full bg-white/[0.06]">
                                     <div
                                         className="h-full rounded-full"
                                         style={{
@@ -72,14 +73,14 @@ export function TranscodingDetailsPanel({ days, serverId }: Scope) {
             {!rows ? (
                 <SkeletonRows count={3} rowClassName="h-12 rounded" />
             ) : (
-                <ul className="divide-y divide-[#1b2742]">
+                <ul className="divide-y divide-white/5">
                     {rows.map((row) => {
                         const meta = DETAIL_META[row.bucket];
                         return (
                             <li key={row.bucket} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                                 <div className="flex min-w-0 items-center gap-3">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1f3a78]/50">
-                                        <meta.icon className="h-4 w-4 text-[#8aaeff]" />
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-400/10">
+                                        <meta.icon className="h-4 w-4 text-rose-400" />
                                     </span>
                                     <div className="min-w-0">
                                         <p className="text-[13px] font-medium text-white">{meta.label}</p>

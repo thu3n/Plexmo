@@ -10,6 +10,7 @@ import type { ServerPlays } from "@/features/stats/hooks/useStatsData";
 import { EmptyRow, Panel, ViewAll } from "./Panel";
 import { formatCount, formatHours, percentOf } from "../lib/overview-math";
 import { useHomeLight, useServerLive, useServers } from "../hooks/useStatsV2";
+import { INSET_CLASS } from "../lib/theme";
 
 const HEALTH_LABEL: Record<ServerHealthState, string> = {
     online: "Online",
@@ -36,7 +37,7 @@ function LoadMeter({ label, value }: { label: string; value: number | null | und
                 </span>
             </div>
             <div className="mt-1 h-1 rounded-full bg-white/[0.07]">
-                <div className="h-full rounded-full bg-[#3987e5]" style={{ width: `${value ?? 0}%` }} />
+                <div className="h-full rounded-full bg-amber-400" style={{ width: `${value ?? 0}%` }} />
             </div>
         </div>
     );
@@ -61,7 +62,7 @@ function ServerTile({
     const color = getServerColor(server.id, server.color);
 
     return (
-        <div className="rounded-lg border border-[#1b2742] bg-[#0b1222] p-4">
+        <div className={`${INSET_CLASS} p-4`}>
             <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white" title={server.name}>{server.name}</span>
@@ -91,9 +92,13 @@ function ServerTile({
                 <div className="h-full rounded-full" style={{ width: `${Math.max(share, 1)}%`, backgroundColor: color }} />
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-3">
-                {LOAD_METERS.map((m) => <LoadMeter key={m.key} label={m.label} value={load?.[m.key]} />)}
-            </div>
+            {/* Load only exists for a live, owner-visible server — three rows of dashes
+                for a paused or offline one read as broken, so they're left out. */}
+            {LOAD_METERS.some((m) => load?.[m.key] != null) && (
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                    {LOAD_METERS.map((m) => <LoadMeter key={m.key} label={m.label} value={load?.[m.key]} />)}
+                </div>
+            )}
         </div>
     );
 }

@@ -1,9 +1,11 @@
+import { ACCENT } from "../lib/theme";
+
 const WIDTH = 44;
 const HEIGHT = 22;
 /** Longer series are downsampled — a 44px sparkline can't show more detail anyway. */
 const MAX_POINTS = 30;
 
-export function Sparkline({ values, color = "#3b82f6" }: { values: number[]; color?: string }) {
+export function Sparkline({ values, color = ACCENT }: { values: number[]; color?: string }) {
     const step = Math.max(1, Math.ceil(values.length / MAX_POINTS));
     const points = values.filter((_, i) => i % step === 0);
     const max = Math.max(...points, 1);

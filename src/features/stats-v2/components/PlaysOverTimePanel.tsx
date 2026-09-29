@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { EmptyRow, Panel, Tabs, type TabOption } from "./Panel";
 import { formatBucketLabel, formatCount, secondsToChartHours } from "../lib/overview-math";
 import { useActivitySeries, useConcurrentSeries } from "../hooks/useStatsV2";
+import { ACCENT, TOOLTIP_STYLE, TRACK } from "../lib/theme";
 
 type Metric = "plays" | "watch" | "users" | "concurrent";
 
@@ -23,8 +24,7 @@ const TOOLTIP_LABEL: Record<Metric, string> = {
     concurrent: "Peak streams",
 };
 
-const LINE = "#3b82f6";
-const AXIS = "rgba(255,255,255,0.7)";
+const AXIS = "rgba(255,255,255,0.55)";
 
 const compactTick = (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v));
 
@@ -65,11 +65,11 @@ export function PlaysOverTimePanel({ days, serverId }: { days: number; serverId:
                             <AreaChart data={points} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="v2-plays-fill" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor={LINE} stopOpacity={0.55} />
-                                        <stop offset="100%" stopColor={LINE} stopOpacity={0.05} />
+                                        <stop offset="0%" stopColor={ACCENT} stopOpacity={0.35} />
+                                        <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                                <CartesianGrid stroke={TRACK} vertical={false} />
                                 <XAxis
                                     dataKey="bucket"
                                     tickFormatter={formatBucketLabel}
@@ -86,7 +86,7 @@ export function PlaysOverTimePanel({ days, serverId }: { days: number; serverId:
                                     allowDecimals={metric === "watch"}
                                 />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: "#0b1222", border: "1px solid #1b2742", borderRadius: 8, fontSize: 12 }}
+                                    contentStyle={{ ...TOOLTIP_STYLE, fontSize: 12 }}
                                     labelFormatter={(label) => formatBucketLabel(String(label))}
                                     formatter={(value) => [formatCount(Number(value)), TOOLTIP_LABEL[metric]]}
                                     cursor={{ stroke: "rgba(255,255,255,0.3)", strokeWidth: 1 }}
@@ -94,10 +94,13 @@ export function PlaysOverTimePanel({ days, serverId }: { days: number; serverId:
                                 <Area
                                     type={metric === "concurrent" ? "stepAfter" : "monotone"}
                                     dataKey="value"
-                                    stroke={LINE}
+                                    stroke={ACCENT}
                                     strokeWidth={2}
                                     fill="url(#v2-plays-fill)"
-                                    activeDot={{ r: 4, stroke: "#0f1729", strokeWidth: 2 }}
+                                    // Entry animation restarts on every SWR revalidation and can leave
+                                    // the area frozen at x=0; the data is static, so skip it.
+                                    isAnimationActive={false}
+                                    activeDot={{ r: 4, stroke: "#000", strokeWidth: 2 }}
                                 />
                             </AreaChart>
                         </ResponsiveContainer>

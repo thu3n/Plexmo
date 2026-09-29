@@ -1,20 +1,21 @@
 "use client";
 
+import type { ComponentType } from "react";
+import { DirectPlayIcon, DirectStreamIcon, TranscodeIcon } from "@/features/dashboard/components/DashboardIcons";
 import { Panel } from "./Panel";
 import { formatCount, formatShare, percentOf } from "../lib/overview-math";
+import { DECISION_COLORS } from "../lib/theme";
 import { useDecisionShare } from "../hooks/useStatsV2";
 
-const DECISIONS = [
-    { bucket: "direct play", label: "Direct Play", color: "#22c55e" },
-    { bucket: "transcode", label: "Transcode", color: "#8b5cf6" },
-    { bucket: "direct stream", label: "Direct Stream", color: "#60a5fa" },
-] as const;
+/** Same order, colours and icons as the dashboard Streams card. */
+const DECISIONS: { bucket: string; label: string; color: string; icon: ComponentType<{ className?: string }> }[] = [
+    { bucket: "direct play", label: "Direct Play", color: DECISION_COLORS.directPlay, icon: DirectPlayIcon },
+    { bucket: "direct stream", label: "Direct Stream", color: DECISION_COLORS.directStream, icon: DirectStreamIcon },
+    { bucket: "transcode", label: "Transcode", color: DECISION_COLORS.transcode, icon: TranscodeIcon },
+];
 
-const RADIUS = 56;
-const STROKE = 14;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-/** Hairline gap between arcs, like the reference design. */
-const GAP = 3;
+// A sub-1% share still gets a visible sliver.
+const MIN_SEGMENT_PERCENT = 1;
 
 export function StreamDecisionPanel({ days, serverId }: { days: number; serverId: string | null }) {
     const share = useDecisionShare(days, serverId);
@@ -24,50 +25,35 @@ export function StreamDecisionPanel({ days, serverId }: { days: number; serverId
         return { ...d, count, percent: percentOf(count, total) };
     });
 
-    const lengths = rows.map((row) => (total > 0 ? (row.count / total) * CIRCUMFERENCE : 0));
-    const arcs = rows.map((row, i) => ({
-        ...row,
-        length: Math.max(0, lengths[i] - GAP),
-        offset: lengths.slice(0, i).reduce((sum, l) => sum + l, 0),
-    }));
-
     return (
         <Panel title="Stream decision" className="flex flex-col">
-            <div className="flex flex-1 flex-col items-center justify-center gap-6 py-2 sm:flex-row sm:justify-around">
-                <div className="relative h-[150px] w-[150px] shrink-0">
-                    <svg viewBox="0 0 140 140" className="-rotate-90">
-                        <circle cx={70} cy={70} r={RADIUS} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={STROKE} />
-                        {arcs.map((arc) =>
-                            arc.length > 0 ? (
-                                <circle
-                                    key={arc.bucket}
-                                    cx={70}
-                                    cy={70}
-                                    r={RADIUS}
-                                    fill="none"
-                                    stroke={arc.color}
-                                    strokeWidth={STROKE}
-                                    strokeDasharray={`${arc.length} ${CIRCUMFERENCE}`}
-                                    strokeDashoffset={-arc.offset}
-                                />
-                            ) : null,
-                        )}
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-[28px] font-semibold leading-none text-white">{rows[0].percent}%</span>
-                        <span className="mt-1 text-xs text-white/70">Direct Play</span>
-                    </div>
+            <div className="flex flex-1 flex-col justify-center gap-5">
+                <div className="flex items-baseline gap-2">
+                    <span className="text-[28px] font-bold leading-none tabular-nums text-white">{formatShare(rows[0].count, total)}</span>
+                    <span className="text-xs text-white/50">played without any conversion</span>
                 </div>
-                <ul className="w-full max-w-[260px] space-y-4">
+                <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-white/5">
+                    {total > 0 &&
+                        rows
+                            .filter((row) => row.count > 0)
+                            .map((row) => (
+                                <div
+                                    key={row.bucket}
+                                    className="h-full first:rounded-l-full last:rounded-r-full"
+                                    style={{ width: `${Math.max((row.count / total) * 100, MIN_SEGMENT_PERCENT)}%`, backgroundColor: row.color }}
+                                />
+                            ))}
+                </div>
+                <ul className="space-y-3">
                     {rows.map((row) => (
                         <li key={row.bucket} className="flex items-center justify-between gap-3">
-                            <span className="flex items-center gap-2.5 text-[13px] text-white">
-                                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: row.color }} />
+                            <span className="flex items-center gap-2 text-[13px] text-white/85">
+                                <span style={{ color: row.color }}><row.icon className="h-4 w-4" /></span>
                                 {row.label}
                             </span>
-                            <span className="text-right tabular-nums">
-                                <span className="block text-[13px] font-semibold text-white">{formatShare(row.count, total)}</span>
-                                <span className="block text-[11px] text-white/55">{formatCount(row.count)}</span>
+                            <span className="flex items-baseline gap-2 tabular-nums">
+                                <span className="text-[11px] text-white/45">{formatCount(row.count)}</span>
+                                <span className="w-10 text-right text-[13px] font-semibold text-white">{formatShare(row.count, total)}</span>
                             </span>
                         </li>
                     ))}

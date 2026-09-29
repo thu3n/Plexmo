@@ -12,6 +12,7 @@ import {
     formatShare,
     percentOf,
     trendPercent,
+    formatWatchTime,
 } from "../lib/overview-math";
 
 describe("overview-math", () => {
@@ -97,5 +98,16 @@ describe("overview-math", () => {
         expect(formatShare(258, 114_000)).toBe("<1%");
         expect(formatShare(0, 100)).toBe("0%");
         expect(formatShare(37, 100)).toBe("37%");
+    });
+});
+
+describe("formatWatchTime", () => {
+    const HOUR = 3600;
+    it("keeps small totals in hours", () => {
+        expect(formatWatchTime(57 * HOUR)).toBe("57h");
+    });
+    it("switches to days, then years", () => {
+        expect(formatWatchTime(412 * 24 * HOUR)).toBe("412 days");
+        expect(formatWatchTime(55_004 * HOUR)).toBe("6.3 years");
     });
 });

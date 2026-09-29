@@ -5,6 +5,7 @@ import type { ServerResources } from "@/lib/server-resources";
 import { useAuthMe } from "@/lib/use-auth-me";
 import { fetchJson, useGraphData, type HomeStatsResponse } from "@/features/stats/hooks/useStatsData";
 import type { OverviewSummaryResponse } from "@/features/stats/hooks/useOverviewData";
+import type { TrendingMediaItem, TrendingMediaType } from "@/lib/stats/trending-media";
 import { ALL_TIME_DAYS } from "@/features/stats/lib/stats-periods";
 
 /** Above a year of data, daily buckets are noise — series go monthly. */
@@ -83,6 +84,20 @@ export function useTranscodeDetails(days: number, serverId: string | null) {
 export const useHomeLight = (days: number, serverId: string | null, limit?: number) =>
     useSWR<HomeStatsResponse>(`/api/stats/home?${query({ days, serverId, media: 0, limit })}`, fetchJson, SWR_OPTS)
         .data;
+
+/**
+ * "All time" has no previous window to compare against, so trending falls
+ * back to the last 30 days vs the 30 before — still the question people ask.
+ */
+export const TRENDING_FALLBACK_DAYS = 30;
+export const trendingDaysFor = (days: number) => (days >= ALL_TIME_DAYS ? TRENDING_FALLBACK_DAYS : days);
+
+export const useTrending = (type: TrendingMediaType, days: number, serverId: string | null, limit: number) =>
+    useSWR<{ items: TrendingMediaItem[] }>(
+        `/api/stats/overview/trending?${query({ type, days: trendingDaysFor(days), serverId, limit })}`,
+        fetchJson,
+        SWR_OPTS,
+    ).data?.items;
 
 export const useServers = () =>
     useSWR<{ servers: PublicServer[] }>("/api/servers", fetchJson, SWR_OPTS).data?.servers ?? [];

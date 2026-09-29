@@ -1,13 +1,22 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { CalendarDays, ChevronDown, Search } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 import { HeaderNav } from "@/components/HeaderNav";
-import { STATS_PERIODS, type StatsPeriodKey } from "@/features/stats/lib/stats-periods";
+import { StatsPeriodPills } from "@/features/stats/components/StatsPeriodPills";
+import type { StatsPeriodKey } from "@/features/stats/lib/stats-periods";
+import { getServerColor } from "@/lib/serverColors";
 import type { PublicServer } from "@/lib/servers";
 
+/** Once the page has scrolled this far, the sticky filter bar gets a backdrop. */
+const SCROLLED_THRESHOLD_PX = 10;
+
+/**
+ * The app-wide page chrome (fixed black header with nav, same height as
+ * Dashboard / History / Libraries so the nav never jumps) plus the sticky
+ * period + server filter bar used by the v1 statistics page.
+ */
 export function OverviewHeader({
     period,
     onPeriodChange,
@@ -23,57 +32,68 @@ export function OverviewHeader({
     serverId: string | null;
     onServerChange: (id: string | null) => void;
 }) {
-    return (
-        <header id="overview" className="flex flex-wrap items-start justify-between gap-4 pb-5 pt-2 safe-top">
-            <div>
-                <h1 className="text-[28px] font-semibold leading-tight text-white">Overview</h1>
-                <p className="text-sm text-white/70">Your Plex server at a glance</p>
-            </div>
+    const [scrolled, setScrolled] = useState(false);
+    useEffect(() => {
+        const onScroll = () => setScrolled(window.scrollY > SCROLLED_THRESHOLD_PX);
+        window.addEventListener("scroll", onScroll);
+        return () => window.removeEventListener("scroll", onScroll);
+    }, []);
 
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-0.5 overflow-x-auto rounded-lg border border-[#1b2742] bg-[#131d33] p-1 no-scrollbar">
-                    {STATS_PERIODS.map((p) => (
+    return (
+        <>
+            <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-black/80 safe-top">
+                <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+                    <h1 className="text-xl font-bold tracking-tight text-white/90">Statistics</h1>
+                    <div className="flex items-center gap-4">
+                        <HeaderNav />
+                        <UserMenu align="top-right" />
+                    </div>
+                </div>
+            </header>
+
+            <div
+                id="overview"
+                className={clsx(
+                    "sticky top-[calc(3.75rem+env(safe-area-inset-top))] z-40 -mx-3 -mt-3 mb-3 flex flex-wrap items-center gap-2 rounded-3xl p-3 transition-all duration-300",
+                    scrolled && "bg-slate-950/95 shadow-2xl",
+                )}
+            >
+                <div className="max-w-full overflow-x-auto no-scrollbar">
+                    <StatsPeriodPills period={period} onPeriodChange={onPeriodChange} />
+                </div>
+                {servers.length > 1 && (
+                    <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/5 bg-white/5 p-1 no-scrollbar">
                         <button
-                            key={p.key}
                             type="button"
-                            onClick={() => onPeriodChange(p.key)}
+                            onClick={() => onServerChange(null)}
                             className={clsx(
-                                "whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                                p.key === period ? "bg-[#1f3a78] text-white" : "text-white/75 hover:text-white",
+                                "rounded-full px-3 py-1 text-xs font-medium transition-all",
+                                serverId === null ? "bg-white text-black" : "text-white/60 hover:text-white",
                             )}
                         >
-                            {p.label}
+                            All
                         </button>
-                    ))}
-                </div>
-
-                {/* The date chip doubles as the server filter — the screenshot has no
-                    dedicated server picker, and multi-server is core to Plexmo. */}
-                <label className="relative flex items-center gap-2 rounded-lg border border-[#1b2742] bg-[#131d33] py-2 pl-3 pr-8 text-xs text-white">
-                    <CalendarDays className="h-3.5 w-3.5 text-white/70" />
-                    <span className="whitespace-nowrap">{dateRange}</span>
-                    {servers.length > 1 && (
-                        <select
-                            aria-label="Server"
-                            value={serverId ?? ""}
-                            onChange={(e) => onServerChange(e.target.value || null)}
-                            className="ml-1 cursor-pointer appearance-none bg-transparent pr-4 text-white/70 outline-none"
-                        >
-                            <option value="" className="bg-[#0f1729]">All servers</option>
-                            {servers.map((s) => (
-                                <option key={s.id} value={s.id} className="bg-[#0f1729]">{s.name}</option>
-                            ))}
-                        </select>
-                    )}
-                    <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-white/60" />
-                </label>
-
-                <HeaderNav />
-                <Link href="/history" aria-label="Search history" className="p-2 text-white/80 hover:text-white">
-                    <Search className="h-5 w-5" />
-                </Link>
-                <UserMenu align="top-right" />
+                        {servers.map((server) => {
+                            const isActive = serverId === server.id;
+                            return (
+                                <button
+                                    key={server.id}
+                                    type="button"
+                                    onClick={() => onServerChange(isActive ? null : server.id)}
+                                    className={clsx(
+                                        "whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium transition-all",
+                                        isActive ? "text-white ring-1 ring-white/20" : "text-white/60 hover:text-white",
+                                    )}
+                                    style={{ backgroundColor: isActive ? getServerColor(server.id, server.color) : "transparent" }}
+                                >
+                                    {server.name}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+                {dateRange && <span className="px-2 text-xs text-white/40 tabular-nums">{dateRange}</span>}
             </div>
-        </header>
+        </>
     );
 }
