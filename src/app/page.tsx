@@ -2,90 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { SessionCard } from "@/features/dashboard/components/SessionCard";
-import { SummaryCard } from "@/components/SummaryCard";
-import {
-  BandwidthIcon,
-  DirectPlayIcon,
-  DirectStreamIcon,
-  StreamsIcon,
-  TranscodeIcon,
-} from "@/features/dashboard/components/DashboardIcons";
+import { BandwidthCard, StreamsOverviewCard } from "@/features/dashboard/components/DashboardStatCards";
+import { ServerFilterBar } from "@/features/dashboard/components/ServerFilterBar";
 import { Skeleton, SkeletonStatCard } from "@/components/Skeleton";
 import { getServerColor } from "@/lib/serverColors";
-import type { PublicServer } from "@/lib/servers";
-import { useDragScroll } from "@/lib/use-drag-scroll";
-import { edgeMaskClass, useScrollEdges } from "@/lib/use-scroll-edges";
 import { useLanguage } from "@/components/LanguageContext";
 import { UserMenu } from "@/components/UserMenu";
 import { HeaderNav } from "@/components/HeaderNav";
 import { useDashboardData } from "@/features/dashboard/hooks/useDashboardData";
 import { useRuleEnforcement } from "@/features/dashboard/hooks/useRuleEnforcement";
 import { useDashboardStatistics } from "@/features/dashboard/hooks/useDashboardStatistics";
-
-
-
-
-type ServerTagStats = { name: string; count: number; label?: string };
-
-/**
- * Per-server tags inside the summary cards — since v1.8.2 these ARE the
- * server filter (the header pills are gone). Clicking a tag filters the
- * dashboard to that server; clicking the highlighted tag clears back to all.
- * Selection is global, so the chosen server highlights on every card. Also
- * the new home of the unreachable-server warning.
- */
-function ServerTags({
-  data,
-  servers,
-  selectedServerId,
-  onSelect,
-}: {
-  data: Record<string, ServerTagStats>;
-  servers: PublicServer[];
-  selectedServerId: string | null;
-  onSelect: (id: string | null) => void;
-}) {
-  const { ref: dragRef, handlers: dragHandlers } = useDragScroll<HTMLDivElement>();
-  const edges = useScrollEdges(dragRef, [data]);
-  return (
-    <div
-      ref={dragRef}
-      {...dragHandlers}
-      className={`flex gap-2 mt-1 overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing ${edgeMaskClass(edges)}`}
-    >
-      {Object.entries(data)
-        .sort(([, a], [, b]) => b.count - a.count)
-        .map(([id, stats]) => {
-        const server = servers.find((s) => s.id === id);
-        const isActive = selectedServerId === id;
-        const isUnreachable = server?.status === "unreachable";
-        return (
-          <button
-            key={id}
-            onClick={() => onSelect(isActive ? null : id)}
-            aria-pressed={isActive}
-            title={isUnreachable ? server?.statusMessage : undefined}
-            className={`flex shrink-0 items-center px-2.5 py-1 rounded-md text-[10px] font-medium whitespace-nowrap transition-all ${isActive
-              ? "text-white ring-1 ring-white/20 shadow-sm"
-              : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
-              }`}
-            style={{ backgroundColor: isActive ? getServerColor(id, server?.color) : undefined }}
-          >
-            {isUnreachable && (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 mr-1 text-amber-400">
-                <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003ZM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm0 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clipRule="evenodd" />
-              </svg>
-            )}
-            {stats.name}:
-            <span className={`font-bold ml-1 ${isActive ? "text-white" : "text-amber-400"}`}>
-              {stats.label ?? stats.count}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function Home() {
   const { t } = useLanguage();
@@ -95,7 +21,6 @@ export default function Home() {
   // Hook 1: Data Fetching
   const {
     sessions: allSessions,
-    summary: serverSummary,
     appName,
     servers,
     isLoading,
@@ -121,11 +46,7 @@ export default function Home() {
     summary,
     setSelectedServerId,
     streamsPerServer,
-    directPlayPerServer,
-    directStreamPerServer,
-    transcodePerServer,
-    bandwidthPerServer
-  } = useDashboardStatistics(allSessions, serverSummary || null, servers);
+  } = useDashboardStatistics(allSessions, servers);
 
   const activeServerName =
     selectedServerId
@@ -135,29 +56,6 @@ export default function Home() {
   const handleSelectServer = (id: string | null) => {
     setSelectedServerId(id);
   };
-
-  // Streams card lists every configured server (count 0 when idle) so idle
-  // or unreachable servers stay visible and filterable.
-  const streamsTagData: Record<string, ServerTagStats> = {
-    ...Object.fromEntries(servers.map((s) => [s.id, { name: s.name, count: 0 }])),
-    ...streamsPerServer,
-  };
-
-  const renderServerTags = (data: Record<string, ServerTagStats>) => (
-    <ServerTags
-      data={data}
-      servers={servers}
-      selectedServerId={selectedServerId}
-      onSelect={handleSelectServer}
-    />
-  );
-
-  const formatBandwidth = (value: number) => {
-    if (!value) return "0 Mbps";
-    const mbps = value / 1000;
-    return `${mbps.toFixed(1)} Mbps`;
-  };
-
 
   return (
     <div className="relative min-h-dvh">
@@ -206,63 +104,31 @@ export default function Home() {
 
       <main className="relative z-10 mx-auto max-w-[1600px] px-4 sm:px-6 main-safe-top pb-dock">
 
-        {/* Stats Grid - Horizontal Scroll on Mobile */}
-        <section className="mb-10 w-full overflow-x-auto pb-4 snap-x snap-mandatory flex gap-4 md:grid md:grid-cols-3 xl:grid-cols-5 md:overflow-visible md:pb-0 no-scrollbar">
-          {isLoading ? (
-            Array.from({ length: 5 }).map((_, idx) => (
-              <div key={idx} className="min-w-[85%] snap-center md:min-w-0">
-                <SkeletonStatCard />
-              </div>
-            ))
-          ) : (
-            <>
-          <div className="min-w-[85%] snap-center md:min-w-0">
-            <SummaryCard
-              label={t("dashboard.streams")}
-              value={summary.active.toString()}
-              detail={servers.length > 0 ? renderServerTags(streamsTagData) : t("dashboard.noActiveSessions")}
-              accent="text-amber-400"
-              icon={<StreamsIcon />}
-            />
+        {/* Stats: streams + how they are delivered, bandwidth by LAN/WAN, then
+            the server filter once for the whole dashboard. */}
+        <section className="mb-10 flex flex-col gap-4">
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+            {isLoading ? (
+              <>
+                <SkeletonStatCard className="lg:col-span-2 h-[172px]" />
+                <SkeletonStatCard className="h-[172px]" />
+              </>
+            ) : (
+              <>
+                <StreamsOverviewCard summary={summary} className="lg:col-span-2" />
+                <BandwidthCard summary={summary} />
+              </>
+            )}
           </div>
-          <div className="min-w-[85%] snap-center md:min-w-0">
-            <SummaryCard
-              label={t("dashboard.directPlay")}
-              value={summary.directPlay.toString()}
-              detail={Object.keys(directPlayPerServer).length > 0 ? renderServerTags(directPlayPerServer) : t("dashboard.noDirectPlay")}
-              accent="text-emerald-400"
-              icon={<DirectPlayIcon />}
+          {!isLoading && servers.length > 0 ? (
+            <ServerFilterBar
+              label={t("settings.servers")}
+              data={streamsPerServer}
+              servers={servers}
+              selectedServerId={selectedServerId}
+              onSelect={handleSelectServer}
             />
-          </div>
-          <div className="min-w-[85%] snap-center md:min-w-0">
-            <SummaryCard
-              label={t("dashboard.directStream")}
-              value={(summary.directStream ?? 0).toString()}
-              detail={Object.keys(directStreamPerServer).length > 0 ? renderServerTags(directStreamPerServer) : t("dashboard.noRemuxing")}
-              accent="text-sky-400"
-              icon={<DirectStreamIcon />}
-            />
-          </div>
-          <div className="min-w-[85%] snap-center md:min-w-0">
-            <SummaryCard
-              label={t("dashboard.transcode")}
-              value={summary.transcoding.toString()}
-              detail={Object.keys(transcodePerServer).length > 0 ? renderServerTags(transcodePerServer) : t("dashboard.cpuChugging")}
-              accent="text-rose-400"
-              icon={<TranscodeIcon />}
-            />
-          </div>
-          <div className="min-w-[85%] snap-center md:min-w-0">
-            <SummaryCard
-              label={t("dashboard.bandwidth")}
-              value={formatBandwidth(summary.bandwidth)}
-              detail={Object.keys(bandwidthPerServer).length > 0 ? renderServerTags(bandwidthPerServer) : t("dashboard.networkLoad")}
-              accent="text-cyan-400"
-              icon={<BandwidthIcon />}
-            />
-          </div>
-            </>
-          )}
+          ) : null}
         </section>
 
         {/* Sessions Section */}

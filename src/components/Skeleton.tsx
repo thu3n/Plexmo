@@ -8,7 +8,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
     return <div aria-hidden className={`animate-pulse rounded-lg bg-white/5 ${className}`} />;
 }
 
-/** Mirrors the stat-card idiom (SummaryCard / libraries stat cards). */
+/** Mirrors the stat-card idiom (dashboard / libraries stat cards). */
 export function SkeletonStatCard({ className = "" }: { className?: string }) {
     return (
         <div aria-hidden className={`rounded-2xl glass-panel border border-white/5 p-5 ${className}`}>
