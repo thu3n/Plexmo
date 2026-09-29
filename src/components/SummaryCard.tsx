@@ -21,7 +21,7 @@ export const SummaryCard = ({
 }) => (
     <div
         onClick={onClick}
-        className={`glass-panel glass-panel-hover flex flex-col justify-between gap-3 p-5 rounded-2xl h-full cursor-pointer transition-all ${className}`}
+        className={`glass-panel glass-panel-hover flex flex-col justify-between gap-3 p-5 rounded-2xl h-full transition-all ${onClick ? "cursor-pointer" : ""} ${className}`}
     >
         {/* Main Row: Icon + Info */}
         <div className="flex items-start justify-between gap-4">

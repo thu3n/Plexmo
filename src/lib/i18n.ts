@@ -125,6 +125,7 @@ export const translations = {
             settings: "Settings",
 
             noActiveSessions: "No active sessions",
+            noDirectPlay: "No direct play",
             noTranscoding: "No transcoding",
             noRemuxing: "No remuxing",
             cpuChugging: "Crunching CPU",

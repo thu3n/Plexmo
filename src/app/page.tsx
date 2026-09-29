@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { SessionCard } from "@/features/dashboard/components/SessionCard";
 import { SummaryCard } from "@/components/SummaryCard";
+import {
+  BandwidthIcon,
+  DirectPlayIcon,
+  DirectStreamIcon,
+  StreamsIcon,
+  TranscodeIcon,
+} from "@/features/dashboard/components/DashboardIcons";
 import { Skeleton, SkeletonStatCard } from "@/components/Skeleton";
 import { getServerColor } from "@/lib/serverColors";
 import type { PublicServer } from "@/lib/servers";
@@ -215,26 +222,16 @@ export default function Home() {
               value={summary.active.toString()}
               detail={servers.length > 0 ? renderServerTags(streamsTagData) : t("dashboard.noActiveSessions")}
               accent="text-amber-400"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <path d="M22 12C22 14.7578 20.8836 17.2549 19.0782 19.064M2 12C2 9.235 3.12222 6.73208 4.93603 4.92188M19.1414 5.00003C19.987 5.86254 20.6775 6.87757 21.1679 8.00003M5 19.1415C4.08988 18.2493 3.34958 17.1845 2.83209 16" />
-                  <path d="M16.2849 8.04397C17.3458 9.05877 18 10.4488 18 11.9822C18 13.5338 17.3302 14.9386 16.2469 15.9564M7.8 16C6.68918 14.9789 6 13.556 6 11.9822C6 10.4266 6.67333 9.01843 7.76162 8" />
-                  <path d="M13.6563 10.4511C14.5521 11.1088 15 11.4376 15 12C15 12.5624 14.5521 12.8912 13.6563 13.5489C13.4091 13.7304 13.1638 13.9014 12.9384 14.0438C12.7407 14.1688 12.5168 14.298 12.2849 14.4249C11.3913 14.914 10.9444 15.1586 10.5437 14.8878C10.1429 14.617 10.1065 14.0502 10.0337 12.9166C10.0131 12.596 10 12.2817 10 12C10 11.7183 10.0131 11.404 10.0337 11.0834C10.1065 9.94977 10.1429 9.38296 10.5437 9.1122C10.9444 8.84144 11.3913 9.08599 12.2849 9.57509C12.5168 9.70198 12.7407 9.83123 12.9384 9.95619C13.1638 10.0986 13.4091 10.2696 13.6563 10.4511Z" />
-                </svg>
-              }
+              icon={<StreamsIcon />}
             />
           </div>
           <div className="min-w-[85%] snap-center md:min-w-0">
             <SummaryCard
               label={t("dashboard.directPlay")}
               value={summary.directPlay.toString()}
-              detail={Object.keys(directPlayPerServer).length > 0 ? renderServerTags(directPlayPerServer) : t("dashboard.noTranscoding")}
+              detail={Object.keys(directPlayPerServer).length > 0 ? renderServerTags(directPlayPerServer) : t("dashboard.noDirectPlay")}
               accent="text-emerald-400"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                  <path fillRule="evenodd" clipRule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM10.6935 15.8458L15.4137 13.059C16.1954 12.5974 16.1954 11.4026 15.4137 10.941L10.6935 8.15419C9.93371 7.70561 9 8.28947 9 9.21316V14.7868C9 15.7105 9.93371 16.2944 10.6935 15.8458Z" />
-                </svg>
-              }
+              icon={<DirectPlayIcon />}
             />
           </div>
           <div className="min-w-[85%] snap-center md:min-w-0">
@@ -243,12 +240,7 @@ export default function Home() {
               value={(summary.directStream ?? 0).toString()}
               detail={Object.keys(directStreamPerServer).length > 0 ? renderServerTags(directStreamPerServer) : t("dashboard.noRemuxing")}
               accent="text-sky-400"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <path d="M7 16V8m0 0 3 3M7 8 4 11m13-3v8m0 0 3-3m-3 3-3-3" />
-                  <rect x="2" y="2" width="20" height="20" rx="5" />
-                </svg>
-              }
+              icon={<DirectStreamIcon />}
             />
           </div>
           <div className="min-w-[85%] snap-center md:min-w-0">
@@ -257,11 +249,7 @@ export default function Home() {
               value={summary.transcoding.toString()}
               detail={Object.keys(transcodePerServer).length > 0 ? renderServerTags(transcodePerServer) : t("dashboard.cpuChugging")}
               accent="text-rose-400"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                  <path d="M13.497 9.405h-2.86c-.612 0-1.11.503-1.11 1.12v2.81c0 .617.498 1.12 1.11 1.12h2.86c.611 0 1.109-.502 1.109-1.12v-2.81c0-.617-.498-1.12-1.11-1.12Zm3.613-5.892A.51.51 0 0 0 16.604 3a.51.51 0 0 0-.509.513V4.54h1.017V3.513Zm-1.806 0A.51.51 0 0 0 14.796 3a.51.51 0 0 0-.509.513V4.54h1.017V3.513Zm-1.807 0A.51.51 0 0 0 12.988 3a.51.51 0 0 0-.508.513V4.54h1.017V3.513Zm-1.807 0A.51.51 0 0 0 11.18 3a.51.51 0 0 0-.508.513V4.54h1.017V3.513Zm-1.808 0A.51.51 0 0 0 9.374 3a.51.51 0 0 0-.508.513V4.54h1.016V3.513Zm-1.807 0A.51.51 0 0 0 7.567 3a.51.51 0 0 0-.508.513V4.54h1.016V3.513ZM7.059 20.487a.51.51 0 0 0 .508.513.51.51 0 0 0 .508-.513V19.46H7.06v1.026Zm1.807 0a.51.51 0 0 0 .508.513.51.51 0 0 0 .508-.513V19.46H8.866v1.026Zm1.807 0a.51.51 0 0 0 .508.513.51.51 0 0 0 .509-.513V19.46h-1.017v1.026Zm1.807 0a.51.51 0 0 0 .508.513.51.51 0 0 0 .509-.513V19.46H12.48v1.026Zm1.807 0a.51.51 0 0 0 .508.513.51.51 0 0 0 .509-.513V19.46h-1.017v1.026Zm1.807 0a.51.51 0 0 0 .509.513.51.51 0 0 0 .508-.513V19.46h-1.017v1.026Zm4.398-4.61h-1.017v1.026h1.017A.51.51 0 0 0 21 16.39a.51.51 0 0 0-.508-.513Zm0-1.825h-1.017v1.027h1.017a.51.51 0 0 0 .508-.514.51.51 0 0 0-.508-.513Zm0-1.824h-1.017v1.026h1.017a.51.51 0 0 0 .508-.513.51.51 0 0 0-.508-.513Zm0-1.824h-1.017v1.026h1.017a.51.51 0 0 0 .508-.513.51.51 0 0 0-.508-.513Zm0-1.824h-1.017v1.026h1.017A.51.51 0 0 0 21 9.093a.51.51 0 0 0-.508-.514ZM21 7.268a.51.51 0 0 0-.508-.513h-1.017v1.026h1.017A.51.51 0 0 0 21 7.268Zm-18 0a.51.51 0 0 0 .508.513h1.017V6.755H3.508A.51.51 0 0 0 3 7.268Zm0 1.825a.51.51 0 0 0 .508.513h1.017V8.579H3.508A.51.51 0 0 0 3 9.093Zm0 1.824a.51.51 0 0 0 .508.513h1.017v-1.026H3.508a.51.51 0 0 0-.508.513Zm0 1.824a.51.51 0 0 0 .508.513h1.017v-1.026H3.508a.51.51 0 0 0-.508.513Zm0 1.824a.51.51 0 0 0 .508.514h1.017v-1.027H3.508a.51.51 0 0 0-.508.513Zm0 1.825a.51.51 0 0 0 .508.513h1.017v-1.026H3.508A.51.51 0 0 0 3 16.39Z" />
-                </svg>
-              }
+              icon={<TranscodeIcon />}
             />
           </div>
           <div className="min-w-[85%] snap-center md:min-w-0">
@@ -270,11 +258,7 @@ export default function Home() {
               value={formatBandwidth(summary.bandwidth)}
               detail={Object.keys(bandwidthPerServer).length > 0 ? renderServerTags(bandwidthPerServer) : t("dashboard.networkLoad")}
               accent="text-cyan-400"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <path d="M17.7453 16C18.5362 14.8661 19 13.4872 19 12C19 11.4851 18.9444 10.9832 18.8389 10.5M6.25469 16C5.46381 14.8662 5 13.4872 5 12C5 8.13401 8.13401 5 12 5C12.4221 5 12.8355 5.03737 13.2371 5.10897M16.4999 7.5L11.9999 12M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM13 12C13 12.5523 12.5523 13 12 13C11.4477 13 11 12.5523 11 12C11 11.4477 11.4477 11 12 11C12.5523 11 13 11.4477 13 12Z" />
-                </svg>
-              }
+              icon={<BandwidthIcon />}
             />
           </div>
             </>

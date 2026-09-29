@@ -38,8 +38,11 @@ export function useDashboardStatistics(
             const decision = session.decision?.toLowerCase();
             const isPaused = session.state?.toLowerCase() === "paused";
 
+            // Paused is counted on top of the decision, exactly like the
+            // server-side summary, so filtering never moves a stream out of
+            // its Direct Play / Direct Stream / Transcode bucket.
             if (isPaused) acc.paused++;
-            else if (decision === "transcode") acc.transcoding++;
+            if (decision === "transcode") acc.transcoding++;
             else if (decision === "direct stream") acc.directStream++;
             else acc.directPlay++;
 
