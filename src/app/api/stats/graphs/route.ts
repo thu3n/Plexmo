@@ -36,6 +36,8 @@ export async function GET(request: Request) {
 
     const days = Math.min(MAX_DAYS, Math.max(1, Number(searchParams.get("days")) || DEFAULT_DAYS));
     const serverId = searchParams.get("serverId") ?? undefined;
+    // Shifts the window back by N days — the compare overlay's previous period.
+    const offsetDays = Math.min(MAX_DAYS, Math.max(0, Math.floor(Number(searchParams.get("offsetDays")) || 0)));
     const userParam = searchParams.get("user");
     const userId = userParam && userParam.length <= MAX_USER_ID_LENGTH ? userParam : undefined;
 
@@ -48,19 +50,22 @@ export async function GET(request: Request) {
         const key = buildStatsKey("graphs", {
             type,
             days,
+            offset: offsetDays,
             server: serverId ?? "all",
             user: userId,
             scope: statsScopeKey(allowedServerIds),
         });
-        const data = getCachedStats(key, STATS_CACHE_TTL_MS, () =>
-            getGraphData(type, {
-                since: Date.now() - days * ONE_DAY_MS,
+        const data = getCachedStats(key, STATS_CACHE_TTL_MS, () => {
+            const until = Date.now() - offsetDays * ONE_DAY_MS;
+            return getGraphData(type, {
+                since: until - days * ONE_DAY_MS,
+                until: offsetDays > 0 ? until : undefined,
                 serverId,
                 allowedServerIds,
                 userId,
-            }),
-        );
-        return NextResponse.json({ type, days, data });
+            });
+        });
+        return NextResponse.json({ type, days, offsetDays, data });
     } catch (error) {
         Logger.error("Failed to fetch graph stats:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

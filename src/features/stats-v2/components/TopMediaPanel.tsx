@@ -6,6 +6,7 @@ import { buildThumbUrl, POSTER_THUMB_HEIGHT, POSTER_THUMB_WIDTH } from "@/featur
 import { DEFAULT_LIST_LIMIT, EXPANDED_LIMIT, ExpandToggle, Panel, Tabs, type TabOption } from "./Panel";
 import { RankedList, type RankedRow } from "./RankedList";
 import { formatCount } from "../lib/overview-math";
+import { titleHref } from "../lib/explore-math";
 
 const SORTS: TabOption<TopMediaSort>[] = [
     { key: "users", label: "Popular" },
@@ -44,6 +45,7 @@ const toRow = (item: TopMediaItem, type: MediaTypeKey, sort: TopMediaSort): Rank
     return {
         key: item.mediaId,
         label: type === "episode" ? (item.showTitle ?? item.title) : item.title,
+        href: titleHref(item.mediaId),
         sub: lead ? `${lead} · ${other}` : other,
         icon: <Poster item={item} />,
         values: [formatCount(value)],

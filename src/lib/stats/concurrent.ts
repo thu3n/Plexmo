@@ -139,14 +139,15 @@ export function getConcurrentSeries(
     scope: PeakScope,
     since: number,
     bucket: ConcurrentBucket,
+    until: number = Number.MAX_SAFE_INTEGER,
 ): { bucket: string; total: number }[] {
     const { sql, args } = snapshotScopeSql(scope);
     return db.prepare<(string | number)[], { bucket: string; total: number }>(
         `SELECT strftime('${BUCKET_FORMAT[bucket]}', datetime(timestamp / 1000, 'unixepoch', 'localtime')) as bucket,
                 MAX(count) as total
          FROM concurrent_snapshots
-         WHERE ${sql} AND timestamp >= ?
+         WHERE ${sql} AND timestamp >= ? AND timestamp < ?
          GROUP BY bucket
          ORDER BY bucket`
-    ).all(...args, since);
+    ).all(...args, since, until);
 }

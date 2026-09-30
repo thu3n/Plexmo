@@ -6,6 +6,7 @@ import { buildThumbUrl, POSTER_THUMB_HEIGHT, POSTER_THUMB_WIDTH } from "@/featur
 import { DEFAULT_LIST_LIMIT, EXPANDED_LIMIT, ExpandToggle, Panel, Tabs, type TabOption } from "./Panel";
 import { RankedList, type RankedRow } from "./RankedList";
 import { formatCount } from "../lib/overview-math";
+import { titleHref } from "../lib/explore-math";
 import { trendingDaysFor, useTrending } from "../hooks/useStatsV2";
 
 const TYPES: TabOption<TrendingMediaType>[] = [
@@ -20,6 +21,7 @@ const toRow = (item: TrendingMediaItem): RankedRow => {
     return {
         key: item.mediaId,
         label: item.title,
+        href: titleHref(item.mediaId),
         sub: `${formatCount(item.plays)} plays · up from ${formatCount(item.previousPlays)}`,
         icon: src ? (
             // eslint-disable-next-line @next/next/no-img-element

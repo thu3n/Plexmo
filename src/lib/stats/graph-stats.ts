@@ -27,15 +27,22 @@ export type GraphType = (typeof GRAPH_TYPES)[number];
 
 export type GraphParams = {
   since: number;
+  /** Exclusive window end, epoch ms (default: open-ended) — previous-period overlays. */
+  until?: number;
   serverId?: string;
   allowedServerIds?: string[];
   /** Canonical accountId — restricts the graph to one identity's rows. */
   userId?: string;
 };
 
-const buildFilter = ({ since, serverId, allowedServerIds, userId }: GraphParams) => {
+const buildFilter = ({ since, until, serverId, allowedServerIds, userId }: GraphParams) => {
   const conditions: string[] = ["h.startTime >= ?"];
   const args: (string | number)[] = [since];
+
+  if (until !== undefined) {
+    conditions.push("h.startTime < ?");
+    args.push(until);
+  }
 
   if (allowedServerIds && allowedServerIds.length > 0) {
     conditions.push(`h.serverId IN (${allowedServerIds.map(() => "?").join(",")})`);
@@ -142,7 +149,7 @@ export const getGraphData = (type: GraphType, params: GraphParams) => {
         serverId: params.serverId && params.serverId !== "all" ? params.serverId : undefined,
         allowedServerIds: params.allowedServerIds,
       };
-      return getConcurrentSeries(scope, params.since, type === "concurrent_by_day" ? "day" : "month");
+      return getConcurrentSeries(scope, params.since, type === "concurrent_by_day" ? "day" : "month", params.until);
     }
     case "transcode_details": {
       // Per-stream-component transcode counts plus the most common "from → to"

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowDown, ArrowUp, Clock, Play, User, Users, type LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/Skeleton";
 import { formatPeakTimestamp } from "@/features/stats/lib/format";
@@ -15,12 +16,17 @@ type Kpi = {
     trend?: number | null;
     spark?: number[];
     title?: string;
+    /** Drill-down target: a route or an in-page anchor. */
+    href?: string;
 };
+
+/** Hover affordance only — a linked card must look identical at rest. */
+const LINK_CARD_CLASS = "transition-colors hover:bg-white/[0.06] hover:ring-1 hover:ring-amber-400/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400";
 
 function KpiCard({ kpi, periodLabel }: { kpi: Kpi; periodLabel: string }) {
     const Icon = kpi.icon;
-    return (
-        <div className={`${PANEL_CLASS} flex items-start gap-3 p-4`} title={kpi.title}>
+    const body = (
+        <>
             {/* Same icon tile as the dashboard stat cards. */}
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-amber-400 ring-1 ring-white/10">
                 <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
@@ -44,12 +50,32 @@ function KpiCard({ kpi, periodLabel }: { kpi: Kpi; periodLabel: string }) {
                     </p>
                 )}
             </div>
-        </div>
+        </>
+    );
+    const className = `${PANEL_CLASS} flex items-start gap-3 p-4`;
+    if (kpi.href?.startsWith("#")) {
+        // Native anchor: hash-only navigation must fire `hashchange`, which next/link's pushState does not.
+        return <a href={kpi.href} className={`${className} ${LINK_CARD_CLASS}`} title={kpi.title}>{body}</a>;
+    }
+    return kpi.href ? (
+        <Link href={kpi.href} className={`${className} ${LINK_CARD_CLASS}`} title={kpi.title}>{body}</Link>
+    ) : (
+        <div className={className} title={kpi.title}>{body}</div>
     );
 }
 
 /** Plays, watch time, users, peak — decision share lives in its own panel, not twice. */
 const KPI_COUNT = 4;
+
+/**
+ * Drill-down targets. #people is the People section tab (SectionTabs keeps the
+ * active section in the hash); #concurrent is handled by PlaysOverTimePanel.
+ */
+export const KPI_LINKS = {
+    plays: "/history",
+    users: "#people",
+    peak: "#concurrent",
+} as const;
 
 /** % change vs. the previous window; null when there is nothing to compare against. */
 const change = (current: number, previous: number | undefined): number | null =>
@@ -78,6 +104,7 @@ export function KpiRow({ days, serverId, periodLabel }: { days: number; serverId
             icon: Play,
             trend: change(summary.totalPlays, prev?.totalPlays),
             spark: series?.map((r) => r.total),
+            href: KPI_LINKS.plays,
         },
         {
             label: "Watch time",
@@ -93,6 +120,7 @@ export function KpiRow({ days, serverId, periodLabel }: { days: number; serverId
             icon: User,
             trend: change(summary.uniqueUsers, prev?.uniqueUsers),
             spark: series?.map((r) => r.users),
+            href: KPI_LINKS.users,
         },
         {
             label: "Peak concurrent",
@@ -101,6 +129,7 @@ export function KpiRow({ days, serverId, periodLabel }: { days: number; serverId
             trend: change(summary.peak.window.count, prev?.peak),
             spark: concurrent?.map((r) => r.total),
             title: peakAt ? `Peak reached ${peakAt}` : undefined,
+            href: KPI_LINKS.peak,
         },
     ];
 
