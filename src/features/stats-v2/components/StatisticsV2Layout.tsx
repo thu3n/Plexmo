@@ -22,7 +22,7 @@ const noopSubscribe = () => () => {};
 /** Local-time strings differ between the server's TZ and the browser's — render them client-only. */
 const useIsClient = () => useSyncExternalStore(noopSubscribe, () => true, () => false);
 
-/** Statistics v2 prototype — a side-by-side candidate for replacing /statistics. */
+/** The statistics page (/statistics): period + server filter, five section tabs. */
 export function StatisticsV2Layout() {
     const [period, setPeriod] = useState<StatsPeriodKey>("all");
     const [serverId, setServerId] = useState<string | null>(null);

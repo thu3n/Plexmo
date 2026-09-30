@@ -38,7 +38,7 @@ export default function UserStatsPage({ params }: { params: Promise<{ username: 
     const backLink = from === "dashboard"
         ? "/"
         : from === "statistics"
-            ? "/statistics/v2"
+            ? "/statistics"
             : returnTo === "rules"
             ? "/settings/rules"
             : "/settings/users";

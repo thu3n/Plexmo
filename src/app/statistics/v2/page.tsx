@@ -1,9 +1,6 @@
-import { StatisticsV2Layout } from "@/features/stats-v2/components/StatisticsV2Layout";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-    title: "Statistics (v2 preview)",
-};
-
-export default function StatisticsV2Page() {
-    return <StatisticsV2Layout />;
+/** The v2 preview became /statistics; keep old bookmarks working. */
+export default function StatisticsV2Redirect() {
+    redirect("/statistics");
 }

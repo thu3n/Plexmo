@@ -58,7 +58,7 @@ export function TitleDetailLayout({ mediaId }: { mediaId: number }) {
                     onServerChange={setServerId}
                 />
 
-                <Link href="/statistics/v2" className={`mb-3 inline-flex items-center gap-1 text-xs font-medium ${LINK_CLASS}`}>
+                <Link href="/statistics" className={`mb-3 inline-flex items-center gap-1 text-xs font-medium ${LINK_CLASS}`}>
                     <ArrowLeft className="h-3 w-3" />
                     Statistics
                 </Link>
