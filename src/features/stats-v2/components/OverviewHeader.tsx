@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 import { HeaderNav } from "@/components/HeaderNav";
 import { StatsPeriodPills } from "@/features/stats/components/StatsPeriodPills";
@@ -24,6 +26,7 @@ export function OverviewHeader({
     servers,
     serverId,
     onServerChange,
+    children,
 }: {
     period: StatsPeriodKey;
     onPeriodChange: (p: StatsPeriodKey) => void;
@@ -31,6 +34,8 @@ export function OverviewHeader({
     servers: PublicServer[];
     serverId: string | null;
     onServerChange: (id: string | null) => void;
+    /** Extra row inside the sticky bar (the section tabs). */
+    children?: ReactNode;
 }) {
     const [scrolled, setScrolled] = useState(false);
     useEffect(() => {
@@ -93,6 +98,15 @@ export function OverviewHeader({
                     </div>
                 )}
                 {dateRange && <span className="px-2 text-xs text-white/40 tabular-nums">{dateRange}</span>}
+                {/* Wrapped lives outside the dock's five items; stats is where people look for it. */}
+                <Link
+                    href="/wrapped"
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-400/20"
+                >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Your Wrapped
+                </Link>
+                {children}
             </div>
         </>
     );

@@ -1,26 +1,16 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import dynamic from "next/dynamic";
-import { Skeleton } from "@/components/Skeleton";
 import { STATS_PERIODS, daysForStatsPeriod, type StatsPeriodKey } from "@/features/stats/lib/stats-periods";
 import { OverviewHeader } from "./OverviewHeader";
-import { KpiRow } from "./KpiRow";
-import { StreamDecisionPanel } from "./StreamDecisionPanel";
-import { ActivityHeatmap } from "./ActivityHeatmap";
-import { TopMediaPanel } from "./TopMediaPanel";
-import { StreamQualityPanel, TranscodingDetailsPanel } from "./PlaybackPanels";
-import { ClientsPanel, TopUsersPanel } from "./PeoplePanels";
-import { TrendingPanel } from "./TrendingPanel";
-import { ServersPanel } from "./ServersPanel";
+import { SectionTabs, useStatsSection } from "./SectionTabs";
+import { OverviewSection } from "./sections/OverviewSection";
+import { LibrarySection } from "./sections/LibrarySection";
+import { ViewingSection } from "./sections/ViewingSection";
+import { PeopleSection } from "./sections/PeopleSection";
+import { ServerSection } from "./sections/ServerSection";
 import { formatDateRange } from "../lib/overview-math";
 import { useActivitySeries, useServers } from "../hooks/useStatsV2";
-
-// Same reasoning as the v1 page: keep the recharts chunk off the navigation tap.
-const PlaysOverTimePanel = dynamic(
-    () => import("./PlaysOverTimePanel").then((m) => m.PlaysOverTimePanel),
-    { ssr: false, loading: () => <Skeleton className="h-[236px] rounded-xl" /> },
-);
 
 const firstBucketTime = (bucket: string | undefined): number | undefined => {
     if (!bucket) return undefined;
@@ -42,6 +32,7 @@ export function StatisticsV2Layout() {
     const servers = useServers();
     const series = useActivitySeries(days, serverId);
     const scope = { days, serverId };
+    const [section, setSection] = useStatsSection();
     const periodLabel = STATS_PERIODS.find((p) => p.key === period)?.label ?? period;
 
     return (
@@ -63,37 +54,16 @@ export function StatisticsV2Layout() {
                         servers={servers}
                         serverId={serverId}
                         onServerChange={setServerId}
-                    />
+                    >
+                        <SectionTabs active={section} onSelect={setSection} />
+                    </OverviewHeader>
 
-                    <KpiRow {...scope} periodLabel={periodLabel} />
-
-                    {/* 12-column grid, full width per row: every list gets enough room for
-                        its labels, and rows share one height so no column leaves a hole. */}
-                    <div className="mt-4 grid gap-4 xl:grid-cols-12">
-                        <div className="flex min-w-0 flex-col gap-4 xl:col-span-8 [&>section:first-child]:flex-1">
-                            <PlaysOverTimePanel {...scope} />
-                            <ActivityHeatmap {...scope} />
-                        </div>
-                        <div className="flex min-w-0 flex-col gap-4 md:grid md:grid-cols-2 xl:col-span-4 xl:flex [&>section]:flex-1">
-                            <StreamDecisionPanel {...scope} />
-                            <StreamQualityPanel {...scope} />
-                            <div className="md:col-span-2 [&>section]:h-full"><TranscodingDetailsPanel {...scope} /></div>
-                        </div>
-
-                        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12 xl:grid-cols-3">
-                            <TopMediaPanel type="movie" {...scope} />
-                            <TopMediaPanel type="show" {...scope} />
-                            {/* Replaces Top episodes, which was mostly Top shows again (one
-                                series filled half of it) — growth is the list that changes. */}
-                            <div className="md:col-span-2 xl:col-span-1 [&>section]:h-full"><TrendingPanel {...scope} /></div>
-                        </div>
-
-                        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:col-span-12">
-                            <TopUsersPanel {...scope} />
-                            <ClientsPanel {...scope} />
-                        </div>
-
-                        <div className="min-w-0 xl:col-span-12"><ServersPanel {...scope} /></div>
+                    <div className="mt-2">
+                        {section === "overview" && <OverviewSection scope={scope} periodLabel={periodLabel} />}
+                        {section === "library" && <LibrarySection scope={scope} />}
+                        {section === "viewing" && <ViewingSection scope={scope} />}
+                        {section === "people" && <PeopleSection scope={scope} />}
+                        {section === "server" && <ServerSection scope={scope} />}
                     </div>
                 </div>
             </main>
