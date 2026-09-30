@@ -18,6 +18,7 @@ export const NOTIFICATION_EVENT_IDS = [
     "rule_violation",
     "server_down",
     "server_up",
+    "anomaly",
 ] as const;
 
 export type NotificationEventId = (typeof NOTIFICATION_EVENT_IDS)[number];
@@ -149,6 +150,17 @@ export const NOTIFICATION_EVENTS: readonly NotificationEventDefinition[] = [
         color: DISCORD_BLURPLE,
         placeholders: ["server", "duration"],
         defaultTemplate: { title: "🟢 Server Back Up", description: "**{server}** is reachable again after {duration}" },
+    },
+    {
+        // Daily scan (src/lib/stats/anomalies-job.ts). {title} is the anomaly
+        // headline, {reason} the measured detail. Opt-in: not in the defaults.
+        id: "anomaly",
+        label: "Unusual activity",
+        description: "The daily scan finds a transcode spike, a silent server, a plays drop/spike or a new client transcoding.",
+        category: "server",
+        color: DISCORD_YELLOW,
+        placeholders: ["server", "title", "reason"],
+        defaultTemplate: { title: "📈 {title}", description: "**{server}**: {reason}" },
     },
 ];
 

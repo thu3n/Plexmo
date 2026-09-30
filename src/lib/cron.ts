@@ -113,6 +113,16 @@ async function runCronJobOnce() {
             console.error("[Cron] Retention sweep failed:", e);
         }
 
+        // --- Daily Anomaly Scan ---
+        // Self-gated (24h); transcode/plays/silence/new-client checks, stored in
+        // stat_anomalies and announced via the opt-in "anomaly" Discord event.
+        try {
+            const { runAnomalyScanIfDue } = await import("./stats/anomalies-job");
+            runAnomalyScanIfDue();
+        } catch (e) {
+            console.error("[Cron] Anomaly scan failed:", e);
+        }
+
         // --- Stats Cache Prewarm ---
         // Self-gated (5 min); keeps the default statistics view permanently warm.
         try {

@@ -3,6 +3,7 @@ import { getSetting } from "./settings";
 import { getTaskLastRun } from "./task-runs";
 import { RETENTION_LAST_RUN_KEY } from "./retention-config";
 import { localDateKeyToMs, localMidnight, nextAlignedRun, nextLocalMidnight, nextRunAfter } from "./schedule-math";
+import { ANOMALY_SCAN_INTERVAL_MS, ANOMALY_SCAN_LAST_RUN_KEY } from "./stats/anomalies-config";
 
 /**
  * Read model of the recurring background work started by instrumentation.ts
@@ -68,6 +69,7 @@ export const getScheduledTasks = (nowMs: number = Date.now()): ScheduledTask[] =
     const statsLast = statsGlobal.__plexmo_stats_prewarm_at ?? null;
     const dedupLast = msSetting(SHOW_DEDUP_SWEPT_AT_KEY);
     const repairLast = msSetting(EPISODE_REPAIR_SWEPT_AT_KEY);
+    const anomalyLast = msSetting(ANOMALY_SCAN_LAST_RUN_KEY);
 
     return [
         {
@@ -135,6 +137,19 @@ export const getScheduledTasks = (nowMs: number = Date.now()): ScheduledTask[] =
             lastRunAt: toIso(repairLast),
             lastRunDateOnly: false,
             nextRunAt: toIso(nextRunAfter(repairLast, MAINTENANCE_RESWEEP_MS, nowMs)),
+            jobType: null,
+            runEndpoint: null,
+        },
+        {
+            id: "anomaly_scan",
+            name: "Anomaly detection",
+            description:
+                "Compares the last 24h with the previous 14 days: transcode share spikes, silent servers, plays drops/spikes and new clients that transcode. Shown on Statistics and sent to Discord (\"Unusual activity\" event).",
+            cadence: "Daily",
+            lastRunAt: toIso(anomalyLast),
+            lastRunDateOnly: false,
+            // Runs on the first session sync once a day has passed.
+            nextRunAt: toIso(anomalyLast === null ? sessionNext : nextRunAfter(anomalyLast, ANOMALY_SCAN_INTERVAL_MS, nowMs)),
             jobType: null,
             runEndpoint: null,
         },
