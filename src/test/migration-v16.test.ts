@@ -30,13 +30,13 @@ describe("migration v16: server_disabled_flag", () => {
         db.close();
     });
 
-    it("records version 16 as the latest applied migration", () => {
+    it("records version 16 as applied", () => {
         const db = createTestDb();
         const row = db
-            .prepare("SELECT MAX(version) as version FROM schema_migrations")
-            .get() as { version: number };
-        expect(row.version).toBe(16);
-        expect(LATEST_SCHEMA_VERSION).toBe(16);
+            .prepare("SELECT version FROM schema_migrations WHERE version = 16")
+            .get() as { version: number } | undefined;
+        expect(row?.version).toBe(16);
+        expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(16);
         db.close();
     });
 });

@@ -5,6 +5,7 @@ import { resolveMediaId, enrichMediaItemGuids, parseGuidList } from "../history/
 import { plexFetch, toArray, decodePlexString } from "../plex/plex-client";
 import type { PlexMediaContainer, PlexMetadata, PlexServerConfig } from "../plex/plex-types";
 import { syncSectionEpisodes } from "./episode-sync";
+import { parsePlexGenres, pruneOrphanGenres, replaceItemGenres } from "./library-genres";
 
 /** Library types we inventory. Music/photo sections are skipped for now. */
 const SYNCED_SECTION_TYPES = new Set(["movie", "show"]);
@@ -122,6 +123,7 @@ const syncSection = async (server: PlexServerConfig & { id: string }, section: S
         thumb: typeof item.thumb === "string" ? item.thumb : null,
         syncedAt,
       });
+      replaceItemGenres(server.id, ratingKey, parsePlexGenres(item));
     }
     upsertSection.run({
       serverId: server.id,
@@ -132,6 +134,7 @@ const syncSection = async (server: PlexServerConfig & { id: string }, section: S
       updatedAt: new Date(syncedAt).toISOString(),
     });
     deleteVanished.run(server.id, section.key, syncedAt);
+    pruneOrphanGenres(server.id);
   });
   writeAll(items);
 

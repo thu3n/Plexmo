@@ -797,6 +797,86 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    // Transcode-reason facts for the server-quality stats. The subtitle
+    // decision, source codecs and source bitrate lived only in meta_json, so
+    // "why did this transcode" needed per-row JSON parsing. Backfilled from
+    // meta where present: live captures carry original*Codec/subtitleDecision,
+    // Tautulli imports carry videoCodec/audioCodec. source_bitrate is new in
+    // the session shape (originalBitrateKbps), so older rows stay NULL
+    // (unknown — never treated as "not bandwidth-limited").
+    version: 17,
+    name: "history_quality_facts",
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE activity_history ADD COLUMN subtitle_decision TEXT;
+        ALTER TABLE activity_history ADD COLUMN subtitle_codec TEXT;
+        ALTER TABLE activity_history ADD COLUMN video_codec TEXT;
+        ALTER TABLE activity_history ADD COLUMN audio_codec TEXT;
+        ALTER TABLE activity_history ADD COLUMN source_bitrate INTEGER;
+
+        UPDATE activity_history SET
+          subtitle_decision = lower(json_extract(meta_json, '$.subtitleDecision')),
+          subtitle_codec = lower(json_extract(meta_json, '$.originalSubtitleCodec')),
+          video_codec = lower(COALESCE(json_extract(meta_json, '$.originalVideoCodec'),
+                                       json_extract(meta_json, '$.videoCodec'))),
+          audio_codec = lower(COALESCE(json_extract(meta_json, '$.originalAudioCodec'),
+                                       json_extract(meta_json, '$.audioCodec'))),
+          source_bitrate = CAST(json_extract(meta_json, '$.originalBitrateKbps') AS INTEGER)
+        WHERE meta_json IS NOT NULL AND json_valid(meta_json);
+      `);
+    },
+  },
+  {
+    // Plex genre tags per library item, written by the library sync
+    // (src/lib/library/library-genres.ts) so user profiles and genre stats can
+    // join plays -> canonical mediaId -> library_items -> genres. Keyed like
+    // library_items (per server, per ratingKey) so a re-sync replaces an item's
+    // genres and vanished items drop their rows. Empty until the first
+    // post-deploy sync (panels degrade to "no genre data yet").
+    version: 18,
+    name: "library_item_genres",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE library_item_genres (
+          serverId TEXT NOT NULL,
+          ratingKey TEXT NOT NULL,
+          genre TEXT NOT NULL,
+          PRIMARY KEY (serverId, ratingKey, genre)
+        );
+        CREATE INDEX idx_library_item_genres_genre ON library_item_genres(genre);
+      `);
+    },
+  },
+  {
+    // Detected statistical anomalies (src/lib/stats/anomalies*.ts), written by
+    // the daily scan. One row per ongoing condition: (kind, serverId, subject)
+    // is re-observed by bumping lastSeenAt instead of inserting, so the panel
+    // lists each incident once and Discord announces it once. `subject`
+    // discriminates same-kind incidents on one server (a client name) and is
+    // '' when unused — a NOT NULL sentinel keeps the lookup index honest.
+    version: 19,
+    name: "stat_anomalies",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE stat_anomalies (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          serverId TEXT NOT NULL,
+          subject TEXT NOT NULL DEFAULT '',
+          severity TEXT NOT NULL CHECK (severity IN ('info','warning','critical')),
+          observed REAL NOT NULL,
+          baseline REAL,
+          details TEXT,
+          firstDetectedAt INTEGER NOT NULL,
+          lastSeenAt INTEGER NOT NULL,
+          notifiedAt INTEGER
+        );
+        CREATE INDEX idx_stat_anomalies_key ON stat_anomalies(kind, serverId, subject, lastSeenAt);
+        CREATE INDEX idx_stat_anomalies_last_seen ON stat_anomalies(lastSeenAt);
+      `);
+    },
+  },
 ];
 
 /** Highest schema version this build knows — a fully migrated DB sits here. */

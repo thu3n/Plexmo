@@ -258,6 +258,7 @@ export const fetchSessions = async (
       decision: finalDecision,
       quality,
       bitrateKbps: streamBitrate > 0 ? streamBitrate : undefined,
+      originalBitrateKbps: Number(originalMedia?.bitrate) > 0 ? Number(originalMedia?.bitrate) : undefined,
       location: session.location || undefined,
       local: player.local !== undefined ? String(player.local) === "1" : undefined,
       relayed: player.relayed !== undefined ? String(player.relayed) === "1" : undefined,

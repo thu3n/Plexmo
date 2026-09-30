@@ -3,7 +3,7 @@
  * session's final heartbeat meta. Single source of truth for the write path —
  * live session close, stale flush and Tautulli import all funnel through
  * insertHistoryRow, which calls this. The v5 migration backfill mirrors this
- * logic in SQL.
+ * logic in SQL, v17 the subtitle/codec/source-bitrate columns.
  */
 
 /** A row counts as watched at this share of the media runtime (Tautulli convention). */
@@ -22,6 +22,11 @@ export type SessionFacts = {
   view_offset_ms: number | null;
   percent_complete: number | null;
   watched: number | null;
+  subtitle_decision: string | null;
+  subtitle_codec: string | null;
+  video_codec: string | null;
+  audio_codec: string | null;
+  source_bitrate: number | null;
 };
 
 const NULL_FACTS: SessionFacts = {
@@ -37,6 +42,11 @@ const NULL_FACTS: SessionFacts = {
   view_offset_ms: null,
   percent_complete: null,
   watched: null,
+  subtitle_decision: null,
+  subtitle_codec: null,
+  video_codec: null,
+  audio_codec: null,
+  source_bitrate: null,
 };
 
 /** Fields read from the PlexSession-shaped meta blob. */
@@ -54,6 +64,14 @@ type SessionMeta = {
   relayed?: boolean;
   viewOffset?: number;
   duration?: number;
+  subtitleDecision?: string;
+  originalSubtitleCodec?: string;
+  /** Live captures write original*Codec; Tautulli imports write videoCodec/audioCodec. */
+  originalVideoCodec?: string;
+  videoCodec?: string;
+  originalAudioCodec?: string;
+  audioCodec?: string;
+  originalBitrateKbps?: number;
 };
 
 /** "3.5 Mbps" -> 3500 kbps. */
@@ -61,6 +79,11 @@ const bitrateFromQuality = (quality?: string): number | null => {
   if (!quality) return null;
   const mbps = Number.parseFloat(quality.replace(" Mbps", ""));
   return Number.isFinite(mbps) ? Math.round(mbps * 1000) : null;
+};
+
+const positiveNumberOrNull = (value: unknown): number | null => {
+  const n = Number(value);
+  return value !== undefined && value !== null && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 };
 
 export const extractSessionFacts = (meta_json: string | null | undefined): SessionFacts => {
@@ -102,6 +125,11 @@ export const extractSessionFacts = (meta_json: string | null | undefined): Sessi
     view_offset_ms: Number.isFinite(viewOffset) && meta.viewOffset !== undefined ? viewOffset : null,
     percent_complete: percentComplete,
     watched: percentComplete === null ? null : percentComplete >= WATCHED_THRESHOLD_PERCENT ? 1 : 0,
+    subtitle_decision: meta.subtitleDecision?.toLowerCase() ?? null,
+    subtitle_codec: meta.originalSubtitleCodec?.toLowerCase() ?? null,
+    video_codec: (meta.originalVideoCodec ?? meta.videoCodec)?.toLowerCase() ?? null,
+    audio_codec: (meta.originalAudioCodec ?? meta.audioCodec)?.toLowerCase() ?? null,
+    source_bitrate: positiveNumberOrNull(meta.originalBitrateKbps),
   };
 };
 

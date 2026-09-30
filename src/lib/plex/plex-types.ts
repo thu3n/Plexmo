@@ -190,6 +190,8 @@ export type PlexSession = {
   quality?: string;
   /** Stream video bitrate in kbps (exact — `quality` is the rounded label). */
   bitrateKbps?: number;
+  /** Source file bitrate in kbps — stream < source on WAN means quality/bandwidth-limited. */
+  originalBitrateKbps?: number;
   location?: string;
   /** Player is on the server's local network. */
   local?: boolean;
