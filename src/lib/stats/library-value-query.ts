@@ -76,11 +76,14 @@ export const getLibraryItemFacts = (params: LibraryScopeParams): LibraryItemFact
 
     // MATERIALIZED: the play set is joined once per library copy; SQLite builds
     // an automatic index on the materialized CTE instead of re-scanning history.
+    // The CAST matters: a bare COALESCE has no column affinity, so the
+    // automatic index left libMediaId out and every library copy scanned all of
+    // its server's plays (~2 min on a 135k-row history).
     const rows = db.prepare(`
         WITH plays AS MATERIALIZED (
             SELECT
                 h.serverId,
-                COALESCE(e.showMediaId, h.mediaId) AS libMediaId,
+                CAST(COALESCE(e.showMediaId, h.mediaId) AS INTEGER) AS libMediaId,
                 COALESCE(h.userId, h.user) || ':' || h.mediaId || ':' ||
                     strftime('%Y-%m-%d', datetime(h.startTime / 1000, 'unixepoch', 'localtime')) AS playKey,
                 h.startTime

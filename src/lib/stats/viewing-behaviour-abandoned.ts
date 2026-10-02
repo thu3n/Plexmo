@@ -93,6 +93,14 @@ export const getAbandonedSeries = (params: BehaviourParams): AbandonedStats => {
         last AS (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY userId, showId ORDER BY startTime DESC) AS rn
             FROM plays
+        ),
+        -- Aggregated once: a correlated "later episode exists?" lookup scanned
+        -- media_items per row (the only showMediaId index is partial).
+        season_max AS (
+            SELECT showMediaId, seasonNumber, MAX(episodeNumber) AS maxEpisode
+            FROM media_items
+            WHERE showMediaId IS NOT NULL
+            GROUP BY showMediaId, seasonNumber
         )
         SELECT
             l.userId AS userId,
@@ -108,17 +116,13 @@ export const getAbandonedSeries = (params: BehaviourParams): AbandonedStats => {
         JOIN summary s ON s.userId = l.userId AND s.showId = l.showId
         JOIN media_items t ON t.id = l.showId
         LEFT JOIN user_identities ui ON ui.accountId = l.userId
+        LEFT JOIN season_max sm ON sm.showMediaId = l.showId AND sm.seasonNumber = l.seasonNumber
         WHERE l.rn = 1
           AND s.episodes >= ?
           AND s.lastAt >= ? AND s.lastAt < ?
           AND (
             (l.pct IS NOT NULL AND l.pct < ?)
-            OR EXISTS (
-                SELECT 1 FROM media_items n
-                WHERE n.showMediaId = l.showId
-                  AND n.seasonNumber = l.seasonNumber
-                  AND n.episodeNumber > l.episodeNumber
-            )
+            OR sm.maxEpisode > l.episodeNumber
           )
         ORDER BY s.lastAt DESC
     `).all(
